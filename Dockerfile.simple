@@ -1,0 +1,39 @@
+# ===============================================
+# DOCKERFILE SIMPLE - POKEMON CARD PLANNING
+# Solution garantie sans tests ni complications
+# ===============================================
+
+FROM maven:3.9.5-eclipse-temurin-21-alpine
+
+WORKDIR /app
+
+# Install wget for health checks
+RUN apk add --no-cache wget
+
+# Copy everything
+COPY . .
+
+# Clean any previous builds and compile only (no tests)
+RUN mvn clean compile -B
+
+# Package without tests using multiple skip flags
+RUN mvn package -DskipTests=true -Dmaven.test.skip=true -Dmaven.test.skip.exec=true -B
+
+# Verify JAR was created
+RUN ls -la target/ && \
+    echo "JAR files found:" && \
+    ls -la target/*.jar
+
+# Expose port
+EXPOSE 8080
+
+# Environment for Docker
+ENV SPRING_PROFILES_ACTIVE=docker
+ENV JAVA_OPTS="-Xmx512m -Xms256m"
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD wget -q --spider http://localhost:8080/actuator/health || exit 1
+
+# Simple startup
+CMD ["sh", "-c", "echo 'Starting Pokemon Planning Backend...' && java $JAVA_OPTS -jar target/*.jar"]

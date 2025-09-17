@@ -1,0 +1,38 @@
+# ===============================================
+# MINIMAL DOCKERFILE FOR DEBUGGING BUILD ISSUES
+# Pokemon Card Planning Backend
+# ===============================================
+
+FROM maven:3.9.5-eclipse-temurin-21-alpine
+
+WORKDIR /app
+
+# Install useful tools for debugging
+RUN apk add --no-cache curl wget
+
+# Copy everything at once for debugging
+COPY . .
+
+# Debug: List files to verify what's copied
+RUN echo "=== FILES COPIED ===" && \
+    ls -la && \
+    echo "=== SRC DIRECTORY ===" && \
+    ls -la src/ && \
+    echo "=== POM.XML CONTENT ===" && \
+    head -20 pom.xml
+
+# Build with maximum verbosity for debugging
+RUN mvn clean compile -X -e -B || ( \
+    echo "=== BUILD FAILED - SHOWING MAVEN LOGS ===" && \
+    ls -la target/ && \
+    exit 1 \
+)
+
+# If compile succeeds, try package
+RUN mvn package -DskipTests -B
+
+# Expose port
+EXPOSE 8080
+
+# Simple startup command for testing
+CMD ["sh", "-c", "echo 'Container started. JAR files:' && ls -la target/*.jar && java -jar target/*.jar"]

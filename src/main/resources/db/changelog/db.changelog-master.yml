@@ -1,0 +1,368 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-planning-tables
+      author: pokemon-card-planning
+      comment: Create planning tables (j_employee and j_planning)
+      changes:
+        # Create j_employee table
+        - sql:
+            sql: |
+              CREATE TABLE IF NOT EXISTS j_employee (
+                id BINARY(16) NOT NULL PRIMARY KEY,
+                first_name VARCHAR(100) NOT NULL,
+                last_name VARCHAR(100) NOT NULL,
+                email VARCHAR(255) NOT NULL UNIQUE,
+                work_hours_per_day INT NOT NULL DEFAULT 8,
+                active BOOLEAN DEFAULT TRUE,
+                efficiency_rating DECIMAL(3,2) DEFAULT 1.00,
+                creation_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                modification_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              
+                INDEX idx_employee_active (active),
+                INDEX idx_employee_email (email),
+                INDEX idx_employee_name (last_name, first_name)
+              ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        # Create j_planning table
+        - sql:
+            sql: |
+              CREATE TABLE IF NOT EXISTS j_planning (
+                id BINARY(16) NOT NULL PRIMARY KEY,
+                order_id BINARY(16) NOT NULL,
+                employee_id BINARY(16) NOT NULL,
+                planning_date DATE NOT NULL,
+                start_time DATETIME NOT NULL,
+                end_time DATETIME,
+                estimated_duration_minutes INT NOT NULL DEFAULT 0,
+                priority ENUM('URGENT', 'HIGH', 'MEDIUM', 'LOW') DEFAULT 'MEDIUM',
+                status ENUM('SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED') DEFAULT 'SCHEDULED',
+                completed BOOLEAN DEFAULT FALSE,
+                estimated_card_count INT DEFAULT 25,
+                actual_card_count INT DEFAULT NULL,
+                notes TEXT,
+                progress_percentage INT DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              
+                FOREIGN KEY (order_id) REFERENCES `order`(id) ON DELETE CASCADE,
+                FOREIGN KEY (employee_id) REFERENCES j_employee(id) ON DELETE CASCADE,
+              
+                INDEX idx_planning_date (planning_date),
+                INDEX idx_planning_employee (employee_id),
+                INDEX idx_planning_order (order_id),
+                INDEX idx_planning_status (status),
+                INDEX idx_planning_start_time (start_time),
+                INDEX idx_planning_order_employee (order_id, employee_id),
+                INDEX idx_planning_date_status (planning_date, status)
+              ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+  - changeSet:
+      id: 002-fix-card-image-constraints
+      author: pokemon-card-planning
+      comment: Fix card_image foreign key constraints only
+      changes:
+        # Temporarily disable foreign key checks
+        - sql:
+            sql: SET FOREIGN_KEY_CHECKS = 0;
+
+        # Drop existing problematic foreign key in card_image (if exists)
+        - sql:
+            sql: |
+              SET @constraint_exists = (
+                SELECT COUNT(*) 
+                FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+                WHERE CONSTRAINT_NAME = 'FK_FD09F5994ACC9A20' 
+                AND TABLE_SCHEMA = DATABASE()
+              );
+              
+              SET @sql = IF(@constraint_exists > 0, 
+                'ALTER TABLE card_image DROP FOREIGN KEY FK_FD09F5994ACC9A20', 
+                'SELECT "No constraint to drop" as result'
+              );
+              
+              PREPARE stmt FROM @sql;
+              EXECUTE stmt;
+              DEALLOCATE PREPARE stmt;
+
+        # Ensure card_image.card_id matches the card.id type (only if table exists)
+        - sql:
+            sql: |
+              SET @table_exists = (
+                SELECT COUNT(*) 
+                FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'card_image'
+              );
+              
+              SET @sql = IF(@table_exists > 0, 
+                'ALTER TABLE card_image MODIFY COLUMN card_id BINARY(16)', 
+                'SELECT "card_image table does not exist" as result'
+              );
+              
+              PREPARE stmt FROM @sql;
+              EXECUTE stmt;
+              DEALLOCATE PREPARE stmt;
+
+        # Re-create the foreign key constraint (only if both tables exist)
+        - sql:
+            sql: |
+              SET @card_exists = (
+                SELECT COUNT(*) 
+                FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'card'
+              );
+              
+              SET @card_image_exists = (
+                SELECT COUNT(*) 
+                FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'card_image'
+              );
+              
+              SET @sql = IF(@card_exists > 0 AND @card_image_exists > 0, 
+                'ALTER TABLE card_image ADD CONSTRAINT FK_card_image_card_id FOREIGN KEY (card_id) REFERENCES card(id) ON DELETE CASCADE ON UPDATE CASCADE', 
+                'SELECT "Cannot create FK - tables missing" as result'
+              );
+              
+              PREPARE stmt FROM @sql;
+              EXECUTE stmt;
+              DEALLOCATE PREPARE stmt;
+
+        # Re-enable foreign key checks
+        - sql:
+            sql: SET FOREIGN_KEY_CHECKS = 1;
+
+  - changeSet:
+      id: 003-add-test-employees
+      author: pokemon-card-planning
+      comment: Add test employees for planning
+      changes:
+        # Insert test employees with proper ULID IDs
+        - sql:
+            sql: |
+              INSERT IGNORE INTO j_employee 
+              (id, first_name, last_name, email, work_hours_per_day, active, efficiency_rating, creation_date, modification_date)
+              VALUES
+              (UNHEX(REPLACE(UUID(), '-', '')), 'Jean', 'Martin', 'jean.martin@pokemon.com', 8, 1, 1.00, NOW(), NOW()),
+              (UNHEX(REPLACE(UUID(), '-', '')), 'Marie', 'Dubois', 'marie.dubois@pokemon.com', 8, 1, 1.10, NOW(), NOW()),
+              (UNHEX(REPLACE(UUID(), '-', '')), 'Pierre', 'Durand', 'pierre.durand@pokemon.com', 7, 1, 0.95, NOW(), NOW()),
+              (UNHEX(REPLACE(UUID(), '-', '')), 'Sophie', 'Moreau', 'sophie.moreau@pokemon.com', 8, 1, 1.05, NOW(), NOW()),
+              (UNHEX(REPLACE(UUID(), '-', '')), 'Lucas', 'Bernard', 'lucas.bernard@pokemon.com', 6, 1, 1.15, NOW(), NOW());
+
+  - changeSet:
+      id: 004-create-compatibility-views-real
+      author: pokemon-card-planning
+      comment: Create views for order status compatibility - REAL column mapping
+      changes:
+        # Create a view that maps the REAL order table structure to planning needs
+        - sql:
+            sql: |
+              SET @order_exists = (
+                SELECT COUNT(*) 
+                FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'order'
+              );
+              
+              SET @sql = IF(@order_exists > 0, 
+                'CREATE OR REPLACE VIEW v_order_planning AS
+                 SELECT 
+                   id,
+                   num_commande as order_number,
+                   num_commande_client as client_order_number,
+                   date as order_date,
+                   status as status_value,
+                   CASE 
+                     WHEN status = 0 THEN ''PENDING''
+                     WHEN status = 1 THEN ''SCHEDULED''
+                     WHEN status = 2 THEN ''IN_PROGRESS''
+                     WHEN status = 3 THEN ''COMPLETED''
+                     WHEN status = 4 THEN ''CANCELLED''
+                     ELSE ''PENDING''
+                   END as status_name,
+                   delai as deadline_info,
+                   CASE 
+                     WHEN retard = 1 THEN ''URGENT''
+                     WHEN delai LIKE ''%URGENT%'' THEN ''URGENT''
+                     WHEN delai LIKE ''%HIGH%'' THEN ''HIGH''
+                     WHEN delai LIKE ''%LOW%'' THEN ''LOW''
+                     ELSE ''MEDIUM''
+                   END as planning_priority,
+                   CASE 
+                     WHEN special_grades = 1 THEN 50
+                     ELSE 25
+                   END as estimated_card_count,
+                   CASE 
+                     WHEN special_grades = 1 THEN 150
+                     ELSE 75
+                   END as estimated_duration_minutes,
+                   customer_id,
+                   reference,
+                   langue as language_code,
+                   annulee as is_cancelled,
+                   paused as is_paused,
+                   retard as is_delayed,
+                   special_grades as has_special_grades,
+                   type as order_type
+                 FROM `order`
+                 WHERE annulee = 0', 
+                'SELECT "Order table does not exist - skipping view creation" as result'
+              );
+              
+              PREPARE stmt FROM @sql;
+              EXECUTE stmt;
+              DEALLOCATE PREPARE stmt;
+
+  - changeSet:
+      id: 005-create-status-mapping-table
+      author: pokemon-card-planning
+      comment: Create a mapping table for order status translations
+      changes:
+        # Create status mapping table
+        - createTable:
+            tableName: order_status_mapping
+            columns:
+              - column:
+                  name: status_value
+                  type: INT
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: status_name
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status_description
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: is_active
+                  type: BOOLEAN
+                  defaultValue: true
+                  constraints:
+                    nullable: false
+
+        # Insert status mappings
+        - insert:
+            tableName: order_status_mapping
+            columns:
+              - column:
+                  name: status_value
+                  value: 0
+              - column:
+                  name: status_name
+                  value: PENDING
+              - column:
+                  name: status_description
+                  value: Order is waiting to be processed
+
+        - insert:
+            tableName: order_status_mapping
+            columns:
+              - column:
+                  name: status_value
+                  value: 1
+              - column:
+                  name: status_name
+                  value: SCHEDULED
+              - column:
+                  name: status_description
+                  value: Order has been scheduled for processing
+
+        - insert:
+            tableName: order_status_mapping
+            columns:
+              - column:
+                  name: status_value
+                  value: 2
+              - column:
+                  name: status_name
+                  value: IN_PROGRESS
+              - column:
+                  name: status_description
+                  value: Order is currently being processed
+
+        - insert:
+            tableName: order_status_mapping
+            columns:
+              - column:
+                  name: status_value
+                  value: 3
+              - column:
+                  name: status_name
+                  value: COMPLETED
+              - column:
+                  name: status_description
+                  value: Order processing has been completed
+
+        - insert:
+            tableName: order_status_mapping
+            columns:
+              - column:
+                  name: status_value
+                  value: 4
+              - column:
+                  name: status_name
+                  value: CANCELLED
+              - column:
+                  name: status_description
+                  value: Order has been cancelled
+
+  - changeSet:
+      id: 006-create-planning-helper-views
+      author: pokemon-card-planning
+      comment: Create helper views for planning operations
+      changes:
+        # View for employee workload calculation
+        - sql:
+            sql: |
+              CREATE OR REPLACE VIEW v_employee_workload AS
+              SELECT 
+                e.id as employee_id,
+                CONCAT(e.first_name, ' ', e.last_name) as employee_name,
+                e.work_hours_per_day,
+                e.efficiency_rating,
+                e.active,
+                COALESCE(SUM(CASE WHEN p.planning_date = CURDATE() AND p.status != 'CANCELLED' THEN p.estimated_duration_minutes ELSE 0 END), 0) as today_minutes,
+                COALESCE(SUM(CASE WHEN p.planning_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY) AND p.status != 'CANCELLED' THEN p.estimated_duration_minutes ELSE 0 END), 0) as week_minutes,
+                COUNT(CASE WHEN p.planning_date = CURDATE() AND p.status != 'CANCELLED' THEN 1 END) as today_orders,
+                COUNT(CASE WHEN p.planning_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY) AND p.status != 'CANCELLED' THEN 1 END) as week_orders
+              FROM j_employee e
+              LEFT JOIN j_planning p ON e.id = p.employee_id
+              WHERE e.active = 1
+              GROUP BY e.id, e.first_name, e.last_name, e.work_hours_per_day, e.efficiency_rating, e.active;
+
+        # View for order planning summary
+        - sql:
+            sql: |
+              CREATE OR REPLACE VIEW v_order_planning_summary AS
+              SELECT 
+                o.id as order_id,
+                o.order_number,
+                o.client_order_number,
+                o.order_date,
+                o.status_name,
+                o.planning_priority,
+                o.estimated_card_count,
+                o.estimated_duration_minutes,
+                COALESCE(p.id, NULL) as planning_id,
+                COALESCE(p.planning_date, NULL) as scheduled_date,
+                COALESCE(p.employee_id, NULL) as assigned_employee_id,
+                COALESCE(CONCAT(e.first_name, ' ', e.last_name), NULL) as assigned_employee_name,
+                COALESCE(p.status, 'UNSCHEDULED') as planning_status,
+                CASE 
+                  WHEN p.id IS NULL THEN 'UNSCHEDULED'
+                  WHEN p.status = 'SCHEDULED' THEN 'SCHEDULED'
+                  WHEN p.status = 'IN_PROGRESS' THEN 'IN_PROGRESS'
+                  WHEN p.status = 'COMPLETED' THEN 'COMPLETED'
+                  WHEN p.status = 'CANCELLED' THEN 'CANCELLED'
+                  ELSE 'UNKNOWN'
+                END as overall_status
+              FROM v_order_planning o
+              LEFT JOIN j_planning p ON o.id = p.order_id
+              LEFT JOIN j_employee e ON p.employee_id = e.id
+              WHERE o.is_cancelled = 0 AND o.is_paused = 0;
