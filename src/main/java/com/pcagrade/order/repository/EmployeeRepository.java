@@ -1,9 +1,9 @@
 // ========== ENGLISH VERSION: EmployeeRepository.java ==========
 // src/main/java/com/pcagrade/order/repository/EmployeeRepository.java
 
-package com.pcagrade.order.repository.primary;
+package com.pcagrade.order.repository;
 
-import com.pcagrade.order.entity.primary.Employee;
+import com.pcagrade.order.entity.Employee;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

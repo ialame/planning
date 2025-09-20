@@ -341,7 +341,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import EmployeeDetailPage from '../components/EmployeeDetailPage.vue'
-const API_BASE_URL = 'http://146.190.204.228:8080'
+import { API_BASE_URL, API_ENDPOINTS } from '@/config/api'
 // ========== INTERFACES ==========
 interface Employee {
   id: string

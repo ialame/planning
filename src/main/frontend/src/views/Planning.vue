@@ -299,7 +299,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-const API_BASE_URL = 'http://146.190.204.228:8080'
+import { API_BASE_URL, API_ENDPOINTS } from '@/config/api'
 // ========== CONSTANTS ==========
 // Configuration from environment or default values
 const CARD_PROCESSING_TIME = parseInt(import.meta.env.VITE_CARD_PROCESSING_TIME || '3') // minutes per card

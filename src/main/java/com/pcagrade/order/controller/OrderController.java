@@ -9,7 +9,7 @@ import java.util.Map;
 import com.pcagrade.order.service.OrderService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
-import com.pcagrade.order.entity.secondary.Order;
+import com.pcagrade.order.entity.Order;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;

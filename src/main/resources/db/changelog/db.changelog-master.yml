@@ -366,3 +366,121 @@ databaseChangeLog:
               LEFT JOIN j_planning p ON o.id = p.order_id
               LEFT JOIN j_employee e ON p.employee_id = e.id
               WHERE o.is_cancelled = 0 AND o.is_paused = 0;
+# ========== CHANGELOG MINIMAL POUR GROUP ==========
+# Version simplifiée qui évite les problèmes de syntaxe MariaDB
+
+#databaseChangeLog:
+  - changeSet:
+      id: 003-create-group-tables-minimal
+      author: pokemon-card-planning
+      comment: Create Group tables - minimal version
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: j_group
+      changes:
+        # Create j_group table with name_upper column included from start
+        - sql:
+            sql: |
+              CREATE TABLE j_group (
+                id BINARY(16) NOT NULL PRIMARY KEY,
+                name VARCHAR(50) NOT NULL UNIQUE,
+                name_upper VARCHAR(50) NULL,
+                description VARCHAR(255) NULL,
+                active BOOLEAN NOT NULL DEFAULT TRUE,
+                permission_level INT NOT NULL DEFAULT 1,
+                creation_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                modification_date DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              
+                INDEX idx_group_name (name),
+                INDEX idx_group_active (active),
+                INDEX idx_group_permission_level (permission_level),
+              
+                CONSTRAINT chk_permission_level CHECK (permission_level >= 1 AND permission_level <= 10),
+                CONSTRAINT chk_group_name_not_empty CHECK (TRIM(name) != '')
+              );
+
+        # Create j_employee_group junction table
+        - sql:
+            sql: |
+              CREATE TABLE j_employee_group (
+                employee_id BINARY(16) NOT NULL,
+                group_id BINARY(16) NOT NULL,
+              
+                PRIMARY KEY (employee_id, group_id),
+              
+                INDEX idx_employee_group_employee (employee_id),
+                INDEX idx_employee_group_group (group_id),
+              
+                CONSTRAINT fk_employee_group_employee 
+                  FOREIGN KEY (employee_id) REFERENCES j_employee(id) ON DELETE CASCADE ON UPDATE CASCADE,
+                CONSTRAINT fk_employee_group_group 
+                  FOREIGN KEY (group_id) REFERENCES j_group(id) ON DELETE CASCADE ON UPDATE CASCADE
+              );
+
+  - changeSet:
+      id: 004-setup-group-triggers-minimal
+      author: pokemon-card-planning
+      comment: Setup triggers for name_upper maintenance
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            tableName: j_group
+        - sqlCheck:
+            expectedResult: 0
+            sql: SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema = DATABASE() AND trigger_name = 'tr_group_insert_name_upper'
+      changes:
+        # Create triggers to maintain name_upper (only if they don't exist)
+        - sql:
+            sql: |
+              CREATE TRIGGER tr_group_insert_name_upper
+              BEFORE INSERT ON j_group
+              FOR EACH ROW
+              SET NEW.name_upper = UPPER(NEW.name);
+
+        - sql:
+            sql: |
+              CREATE TRIGGER tr_group_update_name_upper
+              BEFORE UPDATE ON j_group
+              FOR EACH ROW
+              BEGIN
+                SET NEW.name_upper = UPPER(NEW.name);
+                SET NEW.modification_date = CURRENT_TIMESTAMP;
+              END;
+
+        # Update existing records to set name_upper
+        - sql:
+            sql: UPDATE j_group SET name_upper = UPPER(name) WHERE name_upper IS NULL OR name_upper = '';
+
+        # Create unique index on name_upper for case-insensitive uniqueness (if not exists)
+        - sql:
+            sql: |
+              CREATE UNIQUE INDEX IF NOT EXISTS idx_group_name_upper ON j_group (name_upper);
+
+  - changeSet:
+      id: 005-insert-default-groups-minimal
+      author: pokemon-card-planning
+      comment: Insert default groups
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            tableName: j_group
+        - sqlCheck:
+            expectedResult: 0
+            sql: SELECT COUNT(*) FROM j_group WHERE name IN ('ADMIN', 'MANAGER', 'SUPERVISOR', 'PROCESSOR', 'VIEWER')
+      changes:
+        # Insert default groups only if they don't exist
+        - sql:
+            sql: |
+              INSERT INTO j_group (id, name, description, permission_level, active, creation_date, modification_date)
+              VALUES 
+                (UNHEX(REPLACE(UUID(), '-', '')), 'ADMIN', 'System administrators with full access', 10, true, NOW(), NOW()),
+                (UNHEX(REPLACE(UUID(), '-', '')), 'MANAGER', 'Team managers with planning privileges', 7, true, NOW(), NOW()),
+                (UNHEX(REPLACE(UUID(), '-', '')), 'SUPERVISOR', 'Supervisors with monitoring access', 5, true, NOW(), NOW()),
+                (UNHEX(REPLACE(UUID(), '-', '')), 'PROCESSOR', 'Card processors with basic access', 3, true, NOW(), NOW()),
+                (UNHEX(REPLACE(UUID(), '-', '')), 'VIEWER', 'Read-only access for reporting', 1, true, NOW(), NOW());
+
+      rollback:
+        - sql:
+            sql: DELETE FROM j_group WHERE name IN ('ADMIN', 'MANAGER', 'SUPERVISOR', 'PROCESSOR', 'VIEWER');

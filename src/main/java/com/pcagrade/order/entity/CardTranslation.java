@@ -1,4 +1,4 @@
-package com.pcagrade.order.entity.secondary;
+package com.pcagrade.order.entity;
 
 
 import com.pcagrade.order.util.AbstractUlidEntity;

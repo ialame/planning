@@ -1,6 +1,6 @@
 // src/services/api.js - VERSION QUI FONCTIONNE AVEC VOS ENDPOINTS
-const API_BASE_URL = 'http://146.190.204.228:8080'
-
+//const API_BASE_URL = 'http://146.190.204.228:8080'
+import { API_BASE_URL, API_ENDPOINTS } from '@/config/api'
 class ApiService {
 
   /**

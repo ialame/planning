@@ -239,7 +239,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-const API_BASE_URL = 'http://146.190.204.228:8080'
+import { API_BASE_URL, API_ENDPOINTS } from '@/config/api'
 // ========== PROPS ==========
 const props = defineProps<{
   employeeId: string

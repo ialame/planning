@@ -1,6 +1,5 @@
-package com.pcagrade.order.entity.secondary;
+package com.pcagrade.order.entity;
 
-import com.pcagrade.order.entity.Localization;
 import com.pcagrade.order.util.AbstractUlidEntity;
 import com.pcagrade.order.util.LocalizationColumnDefinitions;
 import jakarta.persistence.*;

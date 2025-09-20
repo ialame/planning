@@ -2,8 +2,8 @@ package com.pcagrade.order.service;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
-import com.pcagrade.order.entity.secondary.Order;
-import com.pcagrade.order.repository.secondary.OrderRepository;
+import com.pcagrade.order.entity.Order;
+import com.pcagrade.order.repository.OrderRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;

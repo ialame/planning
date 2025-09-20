@@ -1,6 +1,6 @@
-package com.pcagrade.order.repository.primary;
+package com.pcagrade.order.repository;
 
-import com.pcagrade.order.entity.primary.Planning;
+import com.pcagrade.order.entity.Planning;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

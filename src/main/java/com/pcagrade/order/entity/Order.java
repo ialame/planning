@@ -1,4 +1,4 @@
-package com.pcagrade.order.entity.secondary;
+package com.pcagrade.order.entity;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;

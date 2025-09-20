@@ -1,6 +1,5 @@
-package com.pcagrade.order.entity.primary;
+package com.pcagrade.order.entity;
 
-import com.pcagrade.order.entity.secondary.Order;
 import com.pcagrade.order.util.AbstractUlidEntity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;

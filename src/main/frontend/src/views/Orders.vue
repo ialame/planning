@@ -371,7 +371,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-const API_BASE_URL = 'http://146.190.204.228:8080'
+import { API_BASE_URL, API_ENDPOINTS } from '@/config/api'
 // ========== STATE ==========
 const loading = ref(false)
 const orders = ref([])

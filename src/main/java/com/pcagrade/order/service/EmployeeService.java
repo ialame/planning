@@ -1,7 +1,7 @@
 package com.pcagrade.order.service;
 
-import com.pcagrade.order.entity.primary.Employee;
-import com.pcagrade.order.repository.primary.EmployeeRepository;
+import com.pcagrade.order.entity.Employee;
+import com.pcagrade.order.repository.EmployeeRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import lombok.extern.slf4j.Slf4j;
