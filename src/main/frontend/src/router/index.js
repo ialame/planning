@@ -3,7 +3,7 @@ import Dashboard from '../views/Dashboard.vue'
 import Orders from '../views/Orders.vue'
 import Employees from '../views/Employees.vue'
 import Planning from '../views/Planning.vue'
-
+import Groups from '../views/Groups.vue'  // 👈 NOUVEAU
 
 const router = createRouter({
   history: createWebHistory(),
@@ -27,6 +27,11 @@ const router = createRouter({
       path: '/planning',
       name: 'planning',
       component: Planning
+    },
+    {
+      path: '/groups',          // 👈 NOUVELLE ROUTE
+      name: 'groups',
+      component: Groups
     }
   ]
 })

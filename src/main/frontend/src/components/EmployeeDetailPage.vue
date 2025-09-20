@@ -11,6 +11,13 @@
           >
             ← Back to Employees
           </button>
+          <!-- 👈 AJOUTER CETTE SECTION -->
+          <div class="mt-8">
+            <EmployeeGroupsCard
+              :employee="employeeData"
+              @updated="refreshData"
+            />
+          </div>
           <div class="text-gray-400">/</div>
           <h1 class="text-2xl font-bold text-gray-900">
             {{ employeeData?.name || 'Employee Details' }}
@@ -240,6 +247,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { API_BASE_URL, API_ENDPOINTS } from '@/config/api'
+import EmployeeGroupsCard from "@/components/groups/EmployeeGroupsCard.vue";
 // ========== PROPS ==========
 const props = defineProps<{
   employeeId: string
