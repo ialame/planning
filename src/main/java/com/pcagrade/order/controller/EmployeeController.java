@@ -25,6 +25,8 @@ public class EmployeeController {
     @Autowired
     private EmployeeService employeeService;
 
+    private static final org.slf4j.Logger log
+            = org.slf4j.LoggerFactory.getLogger(EmployeeController.class);
     /**
      * 👥 GET ALL EMPLOYEES FOR FRONTEND
      * Endpoint: GET /api/employees
@@ -289,6 +291,8 @@ public class EmployeeController {
         Map<String, Object> debug = new HashMap<>();
 
         try {
+            log.info("🔍 Running employee debug diagnostics...");
+
             // 1. Check if j_employee table exists
             String sqlCheckTable = "SHOW TABLES LIKE 'j_employee'";
             Query queryCheckTable = entityManager.createNativeQuery(sqlCheckTable);
@@ -309,32 +313,129 @@ public class EmployeeController {
                 Number activeCount = (Number) queryActiveCount.getSingleResult();
                 debug.put("j_employee_active_count", activeCount.intValue());
 
-                // 3. Sample data
-                String sqlSample = "SELECT HEX(id), first_name, last_name, email, active FROM j_employee LIMIT 3";
+                // 3. Get sample of first 3 employees with their actual data
+                String sqlSample = """
+                    SELECT 
+                        HEX(id) as id,
+                        first_name,
+                        last_name,
+                        email,
+                        work_hours_per_day,
+                        active,
+                        efficiency_rating
+                    FROM j_employee 
+                    LIMIT 3
+                """;
+
                 Query querySample = entityManager.createNativeQuery(sqlSample);
                 @SuppressWarnings("unchecked")
-                List<Object[]> sampleData = querySample.getResultList();
+                List<Object[]> sampleResults = querySample.getResultList();
 
-                List<Map<String, Object>> employees = new ArrayList<>();
-                for (Object[] row : sampleData) {
+                List<Map<String, Object>> sampleEmployees = new ArrayList<>();
+                for (Object[] row : sampleResults) {
                     Map<String, Object> emp = new HashMap<>();
                     emp.put("id", row[0]);
                     emp.put("firstName", row[1]);
                     emp.put("lastName", row[2]);
                     emp.put("email", row[3]);
-                    emp.put("active", ((Number) row[4]).intValue() == 1);
-                    employees.add(emp);
+                    emp.put("workHoursPerDay", row[4]);
+                    emp.put("active", row[5]);
+                    emp.put("efficiencyRating", row[6]);
+                    sampleEmployees.add(emp);
                 }
-                debug.put("sample_employees", employees);
+                debug.put("sample_employees", sampleEmployees);
+
+                // 4. Test the service method
+                List<Map<String, Object>> serviceResult = employeeService.getAllActiveEmployees();
+                debug.put("service_returned_count", serviceResult.size());
+                debug.put("service_sample", serviceResult.isEmpty() ? null : serviceResult.get(0));
+
+            } else {
+                debug.put("error", "Table j_employee does not exist");
             }
 
-            debug.put("status", "Employee controller is working");
+            log.info("✅ Debug complete: {}", debug);
+            return ResponseEntity.ok(debug);
 
         } catch (Exception e) {
+            log.error("❌ Error in debug endpoint: {}", e.getMessage(), e);
             debug.put("error", e.getMessage());
-            e.printStackTrace();
+            debug.put("stackTrace", e.getStackTrace());
+            return ResponseEntity.status(500).body(debug);
         }
-
-        return ResponseEntity.ok(debug);
     }
+
+    /**
+     * 🧪 TEST ENDPOINT - Get employees in different formats
+     * Endpoint: GET /api/employees/test-formats
+     */
+    @GetMapping("/test-formats")
+    public ResponseEntity<Map<String, Object>> testEmployeeFormats() {
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            log.info("🧪 Testing different employee data formats...");
+
+            // Format 1: Raw SQL result
+            String rawSql = """
+                SELECT 
+                    HEX(id) as id,
+                    first_name,
+                    last_name,
+                    email,
+                    work_hours_per_day,
+                    active
+                FROM j_employee 
+                WHERE active = 1
+                LIMIT 2
+            """;
+
+            Query rawQuery = entityManager.createNativeQuery(rawSql);
+            @SuppressWarnings("unchecked")
+            List<Object[]> rawResults = rawQuery.getResultList();
+
+            List<Map<String, Object>> rawEmployees = new ArrayList<>();
+            for (Object[] row : rawResults) {
+                Map<String, Object> emp = new HashMap<>();
+                emp.put("id", row[0]);
+                emp.put("firstName", row[1]);
+                emp.put("lastName", row[2]);
+                emp.put("email", row[3]);
+                emp.put("workHoursPerDay", row[4]);
+                emp.put("active", row[5]);
+                rawEmployees.add(emp);
+            }
+            result.put("raw_sql_results", rawEmployees);
+
+            // Format 2: Service method result
+            List<Map<String, Object>> serviceResults = employeeService.getAllActiveEmployees();
+            result.put("service_results", serviceResults);
+            result.put("service_count", serviceResults.size());
+
+            // Format 3: Expected frontend format
+            List<Map<String, Object>> frontendFormat = new ArrayList<>();
+            for (Map<String, Object> emp : serviceResults) {
+                Map<String, Object> formatted = new HashMap<>();
+                formatted.put("id", emp.get("id"));
+                formatted.put("firstName", emp.get("firstName"));
+                formatted.put("lastName", emp.get("lastName"));
+                formatted.put("fullName", emp.get("firstName") + " " + emp.get("lastName"));
+                formatted.put("email", emp.get("email"));
+                formatted.put("active", emp.get("active"));
+                formatted.put("workHoursPerDay", emp.get("workHoursPerDay"));
+                formatted.put("efficiencyRating", emp.getOrDefault("efficiencyRating", 1.0));
+                frontendFormat.add(formatted);
+            }
+            result.put("frontend_format", frontendFormat);
+
+            log.info("✅ Test formats complete");
+            return ResponseEntity.ok(result);
+
+        } catch (Exception e) {
+            log.error("❌ Error testing formats: {}", e.getMessage(), e);
+            result.put("error", e.getMessage());
+            return ResponseEntity.status(500).body(result);
+        }
+    }
+
 }

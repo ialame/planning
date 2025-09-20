@@ -1,5 +1,9 @@
 package com.pcagrade.order.controller;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.pcagrade.order.dto.GroupDto;
 import com.pcagrade.order.entity.Group;
 import com.pcagrade.order.service.GroupService;
@@ -8,6 +12,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +42,9 @@ public class EnhancedGroupController {
 
     @Autowired
     private GroupMapperService groupMapper;
+
+    @Autowired
+    private EntityManager entityManager;
 
     // ========== CRUD OPERATIONS ==========
 
@@ -310,32 +318,76 @@ public class EnhancedGroupController {
 
     // ========== EMPLOYEE-GROUP MANAGEMENT ==========
 
+// Dans EnhancedGroupController.java
+    // SUPPRIMEZ l'ancienne méthode updateEmployeeGroups qui prend EmployeeGroupAssignmentRequest
+    // et GARDEZ SEULEMENT celle-ci :
+
     /**
-     * 👥 GET GROUPS FOR EMPLOYEE
+     * 👥 GET GROUPS FOR EMPLOYEE - MÊME PATTERN QUE EMPLOYEES
      * Endpoint: GET /api/v2/groups/employee/{employeeId}
      */
     @GetMapping("/employee/{employeeId}")
-    @Operation(summary = "Get groups for employee", description = "Get all groups assigned to an employee")
     public ResponseEntity<Map<String, Object>> getGroupsForEmployee(@PathVariable String employeeId) {
         try {
             log.info("👥 Getting groups for employee: {}", employeeId);
 
-            UUID empId = UUID.fromString(employeeId);
-            List<Group> groups = groupService.getGroupsForEmployee(empId);
-            List<GroupDto.GroupInfo> groupDtos = groupMapper.toGroupInfoList(groups);
+            String cleanEmployeeId = employeeId.replace("-", "").toUpperCase();
+
+            String sql = """
+            SELECT 
+                HEX(g.id) as id,
+                g.name,
+                g.description,
+                g.permission_level as permissionLevel,
+                g.active,
+                g.creation_date as creationDate,
+                g.modification_date as modificationDate
+            FROM j_group g
+            INNER JOIN j_employee_group eg ON g.id = eg.group_id
+            WHERE HEX(eg.employee_id) = ?
+            AND g.active = 1
+            ORDER BY g.permission_level DESC
+            """;
+
+            Query query = entityManager.createNativeQuery(sql);
+            query.setParameter(1, cleanEmployeeId);
+
+            @SuppressWarnings("unchecked")
+            List<Object[]> results = query.getResultList();
+
+            List<Map<String, Object>> groups = new ArrayList<>();
+            for (Object[] row : results) {
+                Map<String, Object> group = new HashMap<>();
+                group.put("id", (String) row[0]);
+                group.put("name", (String) row[1]);
+                group.put("description", (String) row[2]);
+                group.put("permissionLevel", ((Number) row[3]).intValue());
+
+                // FIX: Gérer le type Boolean correctement
+                Object activeValue = row[4];
+                boolean isActive;
+                if (activeValue instanceof Boolean) {
+                    isActive = (Boolean) activeValue;
+                } else if (activeValue instanceof Number) {
+                    isActive = ((Number) activeValue).intValue() == 1;
+                } else {
+                    isActive = true; // valeur par défaut
+                }
+                group.put("active", isActive);
+
+                group.put("creationDate", row[5]);
+                group.put("modificationDate", row[6]);
+                groups.add(group);
+            }
 
             Map<String, Object> response = new HashMap<>();
-            response.put("groups", groupDtos);
+            response.put("groups", groups);
             response.put("employeeId", employeeId);
-            response.put("totalGroups", groupDtos.size());
+            response.put("totalGroups", groups.size());
 
-            log.debug("✅ Found {} groups for employee: {}", groupDtos.size(), employeeId);
+            log.info("✅ Found {} groups for employee: {}", groups.size(), employeeId);
             return ResponseEntity.ok(response);
 
-        } catch (IllegalArgumentException e) {
-            log.warn("⚠️ Invalid employee ID: {}", employeeId);
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Invalid employee ID format"));
         } catch (Exception e) {
             log.error("❌ Error getting groups for employee: {}", employeeId, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -344,43 +396,59 @@ public class EnhancedGroupController {
     }
 
     /**
-     * 🔄 UPDATE EMPLOYEE GROUPS
+     * 🔄 UPDATE EMPLOYEE GROUPS - VERSION AVEC DEBUG ET VALIDATION
      * Endpoint: PUT /api/v2/groups/employee/{employeeId}
      */
     @PutMapping("/employee/{employeeId}")
-    @Operation(summary = "Update employee groups", description = "Replace all groups for an employee using DTO")
+    @Transactional
+    @Operation(summary = "Update employee groups", description = "Replace all groups for an employee")
     public ResponseEntity<Map<String, Object>> updateEmployeeGroups(
             @PathVariable String employeeId,
-            @Valid @RequestBody GroupDto.EmployeeGroupAssignmentRequest request) {
+            @RequestBody Map<String, Object> request) {
         try {
-            log.info("🔄 Updating groups for employee: {}", employeeId);
+            log.info("Updating groups for employee: {}", employeeId);
 
-            UUID empId = UUID.fromString(employeeId);
+            // Convertir tous les IDs (employé et groupes) en UUID
+            UUID empUuid = parseId(employeeId);
 
-            List<UUID> groupIds = new ArrayList<>();
-            if (request.getGroupIds() != null) {
-                for (String groupIdStr : request.getGroupIds()) {
-                    groupIds.add(UUID.fromString(groupIdStr));
+            @SuppressWarnings("unchecked")
+            List<String> groupIdStrings = (List<String>) request.get("groupIds");
+
+            List<UUID> groupUuids = new ArrayList<>();
+            if (groupIdStrings != null) {
+                for (String groupId : groupIdStrings) {
+                    groupUuids.add(parseId(groupId));
                 }
             }
 
-            groupService.updateEmployeeGroups(empId, groupIds);
+            // Supprimer les assignations existantes
+            String deleteSql = "DELETE FROM j_employee_group WHERE employee_id = ?";
+            Query deleteQuery = entityManager.createNativeQuery(deleteSql);
+            deleteQuery.setParameter(1, empUuid);
+            int deletedCount = deleteQuery.executeUpdate();
 
+            // Ajouter les nouvelles assignations
+            int addedCount = 0;
+            for (UUID groupUuid : groupUuids) {
+                String insertSql = "INSERT INTO j_employee_group (employee_id, group_id) VALUES (?, ?)";
+                Query insertQuery = entityManager.createNativeQuery(insertSql);
+                insertQuery.setParameter(1, empUuid);
+                insertQuery.setParameter(2, groupUuid);
+                insertQuery.executeUpdate();
+                addedCount++;
+            }
+
+            // Response
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "Employee groups updated successfully");
-            response.put("employeeId", employeeId);
-            response.put("groupIds", request.getGroupIds());
+            response.put("assignmentsRemoved", deletedCount);
+            response.put("assignmentsAdded", addedCount);
 
-            log.info("✅ Groups updated for employee {} successfully", employeeId);
             return ResponseEntity.ok(response);
 
-        } catch (IllegalArgumentException e) {
-            log.warn("⚠️ Update error: {}", e.getMessage());
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
-            log.error("❌ Error updating employee groups", e);
+            log.error("Error updating employee groups: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Error updating groups: " + e.getMessage()));
         }
@@ -763,4 +831,37 @@ public class EnhancedGroupController {
                     .body(Map.of("error", "Error searching groups: " + e.getMessage()));
         }
     }
+
+    private UUID parseId(String idString) {
+        if (idString == null || idString.trim().isEmpty()) {
+            throw new IllegalArgumentException("ID cannot be null or empty");
+        }
+
+        try {
+            String cleanId = idString.trim();
+
+            // Format ULID (26 caractères)
+            if (cleanId.length() == 26 && cleanId.matches("[0-9A-Z]+")) {
+                Ulid ulid = Ulid.from(cleanId);
+                return ulid.toUuid();
+            }
+
+            // Format UUID avec tirets (36 caractères)
+            if (cleanId.length() == 36 && cleanId.contains("-")) {
+                return UUID.fromString(cleanId);
+            }
+
+            // Format HEX sans tirets (32 caractères) - pour transition
+            if (cleanId.length() == 32 && cleanId.matches("[0-9A-Fa-f]+")) {
+                String formatted = cleanId.toLowerCase()
+                        .replaceAll("(.{8})(.{4})(.{4})(.{4})(.{12})", "$1-$2-$3-$4-$5");
+                return UUID.fromString(formatted);
+            }
+
+            throw new IllegalArgumentException("Invalid ID format: " + cleanId);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid ID: " + idString, e);
+        }
+    }
+
 }

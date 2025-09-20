@@ -371,4 +371,249 @@ const props = defineProps<{
   group: Group
 }>()
 
-const emit = define
+const emit = defineEmits<{
+  close: []
+  updated: []
+  deleted: []
+}>()
+
+// ========== STATE ==========
+const loading = ref(false)
+const activeTab = ref('overview')
+const groupMembers = ref<Employee[]>([])
+const allEmployees = ref<Employee[]>([])
+const showEmployeeAssignment = ref(false)
+
+const editForm = ref({
+  description: props.group.description,
+  permissionLevel: props.group.permissionLevel,
+  active: props.group.active
+})
+
+// ========== PERMISSION LEVELS ==========
+const permissionLevels: PermissionLevelInfo[] = [
+  { level: 10, name: 'SUPER_ADMIN', description: 'Super administrator with unrestricted access', colorCode: '#6f42c1' },
+  { level: 9, name: 'ADMIN', description: 'System administrator with full management rights', colorCode: '#dc3545' },
+  { level: 8, name: 'SENIOR_ADMIN', description: 'Senior administrator with most privileges', colorCode: '#fd7e14' },
+  { level: 7, name: 'MANAGER', description: 'Team manager with planning and oversight privileges', colorCode: '#ffc107' },
+  { level: 6, name: 'SENIOR_SUPERVISOR', description: 'Senior supervisor with extended monitoring rights', colorCode: '#20c997' },
+  { level: 5, name: 'SUPERVISOR', description: 'Supervisor with monitoring and basic management', colorCode: '#28a745' },
+  { level: 4, name: 'SENIOR_PROCESSOR', description: 'Senior processor with advanced processing rights', colorCode: '#17a2b8' },
+  { level: 3, name: 'PROCESSOR', description: 'Card processor with standard processing access', colorCode: '#007bff' },
+  { level: 2, name: 'JUNIOR_PROCESSOR', description: 'Junior processor with limited processing access', colorCode: '#6c757d' },
+  { level: 1, name: 'VIEWER', description: 'Read-only access for viewing and reports', colorCode: '#868e96' }
+]
+
+// ========== TABS ==========
+const tabs = [
+  { id: 'overview', label: 'Overview', icon: Eye },
+  { id: 'members', label: 'Members', icon: Users },
+  { id: 'settings', label: 'Settings', icon: Settings }
+]
+
+// ========== COMPUTED ==========
+const activeMembers = computed(() => {
+  return groupMembers.value.filter(m => m.active).length
+})
+
+const averageEfficiency = computed(() => {
+  if (groupMembers.value.length === 0) return 0
+  const sum = groupMembers.value.reduce((acc, m) => acc + m.efficiencyRating, 0)
+  return Math.round((sum / groupMembers.value.length) * 100) / 100
+})
+
+const totalWorkHours = computed(() => {
+  return groupMembers.value.reduce((acc, m) => acc + m.workHoursPerDay, 0)
+})
+
+const hasChanges = computed(() => {
+  return editForm.value.description !== props.group.description ||
+    editForm.value.permissionLevel !== props.group.permissionLevel ||
+    editForm.value.active !== props.group.active
+})
+
+// ========== METHODS ==========
+const loadGroupMembers = async () => {
+  loading.value = true
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v2/groups/${props.group.id}?includeEmployees=true`)
+    if (response.ok) {
+      const data = await response.json()
+      groupMembers.value = data.employees || []
+    }
+  } catch (error) {
+    console.error('Error loading group members:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+const loadAllEmployees = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/employees`)
+    if (response.ok) {
+      const data = await response.json()
+      allEmployees.value = data.employees || []
+    }
+  } catch (error) {
+    console.error('Error loading employees:', error)
+  }
+}
+
+const updateGroup = async () => {
+  loading.value = true
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v2/groups/${props.group.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editForm.value)
+    })
+
+    if (response.ok) {
+      emit('updated')
+    } else {
+      console.error('Error updating group')
+    }
+  } catch (error) {
+    console.error('Error updating group:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+const confirmDelete = () => {
+  if (confirm(`Are you sure you want to delete the group "${props.group.name}"? This action cannot be undone.`)) {
+    deleteGroup()
+  }
+}
+
+const deleteGroup = async () => {
+  loading.value = true
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v2/groups/${props.group.id}`, {
+      method: 'DELETE'
+    })
+
+    if (response.ok) {
+      emit('deleted')
+    } else {
+      console.error('Error deleting group')
+    }
+  } catch (error) {
+    console.error('Error deleting group:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+const removeMemberFromGroup = async (employee: Employee) => {
+  if (!confirm(`Remove ${employee.fullName} from this group?`)) return
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v2/groups/${props.group.id}/employees/${employee.id}`, {
+      method: 'DELETE'
+    })
+
+    if (response.ok) {
+      groupMembers.value = groupMembers.value.filter(m => m.id !== employee.id)
+    }
+  } catch (error) {
+    console.error('Error removing member:', error)
+  }
+}
+
+const openEmployeeAssignment = () => {
+  showEmployeeAssignment.value = true
+}
+
+const onMembersUpdated = () => {
+  showEmployeeAssignment.value = false
+  loadGroupMembers()
+  emit('updated')
+}
+
+const resetForm = () => {
+  editForm.value = {
+    description: props.group.description,
+    permissionLevel: props.group.permissionLevel,
+    active: props.group.active
+  }
+}
+
+// ========== UTILITY FUNCTIONS ==========
+const getPermissionInfo = (level: number): PermissionLevelInfo => {
+  return permissionLevels.find(p => p.level === level) || permissionLevels[permissionLevels.length - 1]
+}
+
+const getPermissionBadgeColor = (level: number) => {
+  if (level >= 8) return 'bg-red-100 text-red-800'
+  if (level >= 5) return 'bg-yellow-100 text-yellow-800'
+  if (level >= 3) return 'bg-blue-100 text-blue-800'
+  return 'bg-gray-100 text-gray-800'
+}
+
+const getPermissionLevelColor = (level: number) => {
+  if (level >= 8) return 'bg-red-500'
+  if (level >= 5) return 'bg-yellow-500'
+  if (level >= 3) return 'bg-blue-500'
+  return 'bg-gray-500'
+}
+
+const getGroupIcon = (level: number) => {
+  if (level >= 8) return '👑'
+  if (level >= 5) return '🛡️'
+  if (level >= 3) return '⚙️'
+  return '👀'
+}
+
+const getEmployeeInitials = (employee: Employee) => {
+  return `${employee.firstName?.charAt(0) || ''}${employee.lastName?.charAt(0) || ''}`
+}
+
+const formatDate = (dateString: string) => {
+  if (!dateString) return 'N/A'
+  try {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  } catch {
+    return 'Invalid date'
+  }
+}
+
+// ========== WATCHERS ==========
+watch(() => props.group, (newGroup) => {
+  if (newGroup) {
+    editForm.value = {
+      description: newGroup.description,
+      permissionLevel: newGroup.permissionLevel,
+      active: newGroup.active
+    }
+    loadGroupMembers()
+  }
+}, { immediate: true })
+
+// ========== LIFECYCLE ==========
+onMounted(() => {
+  loadGroupMembers()
+  loadAllEmployees()
+})
+</script>
+
+<style scoped>
+.input-field {
+  @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500;
+}
+
+.btn-primary {
+  @apply bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center;
+}
+
+.btn-secondary {
+  @apply bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 transition-colors;
+}
+</style>

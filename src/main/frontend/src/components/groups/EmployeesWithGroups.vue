@@ -309,7 +309,21 @@ const loadEmployees = async () => {
     const response = await fetch(`${API_BASE_URL}/api/employees`)
     if (response.ok) {
       const data = await response.json()
-      const employeeList = data.employees || []
+
+      // ✅ FIXED: Handle both response formats
+      let employeeList = []
+      if (data.employees && Array.isArray(data.employees)) {
+        // Format: { employees: [...] }
+        employeeList = data.employees
+        console.log('✅ Loaded employees from data.employees:', employeeList.length)
+      } else if (Array.isArray(data)) {
+        // Format: [...]
+        employeeList = data
+        console.log('✅ Loaded employees from direct array:', employeeList.length)
+      } else {
+        console.error('❌ Unexpected response format:', data)
+        return
+      }
 
       // Load groups for each employee
       const employeesWithGroups = await Promise.all(
@@ -331,21 +345,15 @@ const loadEmployees = async () => {
       )
 
       employees.value = employeesWithGroups
+      console.log(`✅ Final result: ${employees.value.length} employees with groups loaded`)
+    } else {
+      console.error('❌ Failed to load employees:', response.status, response.statusText)
     }
   } catch (error) {
-    console.error('Error loading employees:', error)
+    console.error('❌ Error loading employees:', error)
   } finally {
     loading.value = false
   }
-}
-
-const manageEmployeeGroups = (employee: Employee) => {
-  selectedEmployee.value = employee
-}
-
-const viewEmployeeDetails = (employee: Employee) => {
-  // Navigate to employee detail page or show modal
-  console.log('View employee details:', employee)
 }
 
 const onEmployeeGroupsUpdated = async () => {
@@ -434,7 +442,26 @@ const downloadCSV = (content: string, filename: string) => {
   document.body.removeChild(a)
   window.URL.revokeObjectURL(url)
 }
+// Dans EmployeesWithGroups.vue, remplacez ces méthodes par :
 
+const manageEmployeeGroups = (employee: Employee) => {
+  console.log('🔧 Managing groups for employee:', employee)
+  console.log('Employee data:', {
+    id: employee.id,
+    name: employee.fullName,
+    email: employee.email,
+    groups: employee.groups
+  })
+
+  selectedEmployee.value = employee
+  console.log('✅ selectedEmployee set to:', selectedEmployee.value)
+}
+
+const viewEmployeeDetails = (employee: Employee) => {
+  console.log('👁️ Viewing details for employee:', employee)
+  // Pour l'instant, juste un log - vous pouvez implementer une modal de détails plus tard
+  alert(`Employee Details:\n\nName: ${employee.fullName}\nEmail: ${employee.email}\nWork Hours: ${employee.workHoursPerDay}h/day\nGroups: ${employee.groups.length}`)
+}
 // ========== LIFECYCLE ==========
 onMounted(() => {
   loadEmployees()

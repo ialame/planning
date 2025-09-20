@@ -286,21 +286,72 @@ const changesCount = computed(() => {
 })
 
 // ========== METHODS ==========
+
+/**
+ * Convertit un UUID HEX (32 caractères) en UUID standard avec tirets
+ */
+const formatUuidFromHex = (hexUuid: string): string => {
+  if (!hexUuid || hexUuid.length !== 32) {
+    console.error('Invalid HEX UUID format:', hexUuid)
+    return hexUuid
+  }
+
+  const hex = hexUuid.toLowerCase()
+  return `${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20, 32)}`
+}
+
+/**
+ * Charge tous les groupes disponibles
+ */
 const loadAllGroups = async () => {
   loading.value = true
   try {
+    console.log('🔄 Loading all available groups...')
     const response = await fetch(`${API_BASE_URL}/api/v2/groups?includeEmployeeCount=true`)
     if (response.ok) {
       const data = await response.json()
       allGroups.value = data.groups || []
+      console.log('✅ Loaded all groups:', allGroups.value.length)
+    } else {
+      console.error('❌ Failed to load groups:', response.status)
     }
   } catch (error) {
-    console.error('Error loading groups:', error)
+    console.error('❌ Error loading groups:', error)
   } finally {
     loading.value = false
   }
 }
 
+/**
+ * Charge les groupes actuels de l'employé
+ */
+const loadEmployeeCurrentGroups = async () => {
+  try {
+    console.log('🔄 Loading current groups for employee:', props.employee.id)
+
+    // ✅ MÊME PATTERN : Utiliser l'ID directement comme pour les employés
+    const response = await fetch(`${API_BASE_URL}/api/v2/groups/employee/${props.employee.id}`)
+
+    if (response.ok) {
+      const data = await response.json()
+      const currentGroups = data.groups || []
+      console.log('✅ Loaded current groups for employee:', currentGroups)
+
+      selectedGroups.value = [...currentGroups]
+      originalGroupIds.value = currentGroups.map(g => g.id)
+
+      console.log('📋 Selected groups initialized:', selectedGroups.value.length)
+    } else {
+      console.log('ℹ️ No current groups found for employee')
+      selectedGroups.value = []
+      originalGroupIds.value = []
+    }
+  } catch (error) {
+    console.error('❌ Error loading employee current groups:', error)
+    selectedGroups.value = []
+    originalGroupIds.value = []
+  }
+}
 const isGroupSelected = (group: Group) => {
   return selectedGroups.value.some(g => g.id === group.id)
 }
@@ -308,104 +359,115 @@ const isGroupSelected = (group: Group) => {
 const toggleGroup = (group: Group) => {
   if (isGroupSelected(group)) {
     selectedGroups.value = selectedGroups.value.filter(g => g.id !== group.id)
+    console.log('➖ Removed group:', group.name)
   } else {
     selectedGroups.value.push(group)
+    console.log('➕ Added group:', group.name)
   }
+  console.log('📋 Current selection:', selectedGroups.value.map(g => g.name))
 }
 
 const getGroupChangeType = (group: Group) => {
-  const isCurrentlySelected = isGroupSelected(group)
-  const wasOriginallySelected = originalGroupIds.value.includes(group.id)
+  const wasSelected = originalGroupIds.value.includes(group.id)
+  const isSelected = isGroupSelected(group)
 
-  if (isCurrentlySelected && !wasOriginallySelected) return 'added'
-  if (!isCurrentlySelected && wasOriginallySelected) return 'removed'
+  if (!wasSelected && isSelected) return 'added'
+  if (wasSelected && !isSelected) return 'removed'
   return null
 }
 
-const resetChanges = () => {
-  selectedGroups.value = allGroups.value.filter(g => originalGroupIds.value.includes(g.id))
-}
-
-const saveChanges = async () => {
-  if (!hasChanges.value) return
-
-  loading.value = true
-  try {
-    const currentIds = new Set(selectedGroups.value.map(g => g.id))
-    const originalIds = new Set(originalGroupIds.value)
-
-    // Groups to add
-    const groupsToAdd = selectedGroups.value.filter(g => !originalIds.has(g.id))
-    // Groups to remove
-    const groupsToRemove = originalGroupIds.value.filter(id => !currentIds.has(id))
-
-    // Execute all changes
-    const promises = []
-
-    // Add to new groups
-    for (const group of groupsToAdd) {
-      promises.push(
-        fetch(`${API_BASE_URL}/api/v2/groups/${group.id}/employees/${props.employee.id}`, {
-          method: 'POST'
-        })
-      )
-    }
-
-    // Remove from old groups
-    for (const groupId of groupsToRemove) {
-      promises.push(
-        fetch(`${API_BASE_URL}/api/v2/groups/${groupId}/employees/${props.employee.id}`, {
-          method: 'DELETE'
-        })
-      )
-    }
-
-    await Promise.all(promises)
-
-    // Update original state
-    originalGroupIds.value = selectedGroups.value.map(g => g.id)
-
-    emit('updated')
-  } catch (error) {
-    console.error('Error saving changes:', error)
-  } finally {
-    loading.value = false
-  }
-}
-
-// ========== UTILITY FUNCTIONS ==========
 const getEmployeeInitials = (employee: Employee) => {
   return `${employee.firstName?.charAt(0) || ''}${employee.lastName?.charAt(0) || ''}`
 }
 
 const getPermissionLevelColor = (level: number) => {
   if (level >= 8) return 'bg-red-500'
-  if (level >= 5) return 'bg-yellow-500'
-  if (level >= 3) return 'bg-blue-500'
-  return 'bg-gray-500'
+  if (level >= 5) return 'bg-orange-500'
+  if (level >= 3) return 'bg-yellow-500'
+  return 'bg-blue-500'
 }
 
 const getPermissionBadgeColor = (level: number) => {
   if (level >= 8) return 'bg-red-100 text-red-800'
-  if (level >= 5) return 'bg-yellow-100 text-yellow-800'
-  if (level >= 3) return 'bg-blue-100 text-blue-800'
-  return 'bg-gray-100 text-gray-800'
+  if (level >= 5) return 'bg-orange-100 text-orange-800'
+  if (level >= 3) return 'bg-yellow-100 text-yellow-800'
+  return 'bg-blue-100 text-blue-800'
 }
 
 const getGroupIcon = (level: number) => {
   if (level >= 8) return '👑'
   if (level >= 5) return '🛡️'
-  if (level >= 3) return '⚙️'
-  return '👀'
+  if (level >= 3) return '⭐'
+  return '👤'
+}
+
+const saveChanges = async () => {
+  if (!hasChanges.value) {
+    console.log('❌ No changes to save')
+    return
+  }
+
+  loading.value = true
+  try {
+    console.log('🔄 Saving group changes for employee:', props.employee.id)
+
+    const groupIds = selectedGroups.value.map(g => g.id)
+    console.log('📋 Groups to assign:', groupIds)
+
+    const requestBody = {
+      employeeId: props.employee.id,  // ✅ MÊME PATTERN : ID direct
+      groupIds: groupIds              // ✅ MÊME PATTERN : IDs directs
+    }
+
+    const url = `${API_BASE_URL}/api/v2/groups/employee/${props.employee.id}`  // ✅ ID direct
+    console.log('📤 Making request to:', url)
+    console.log('📤 Request body:', JSON.stringify(requestBody, null, 2))
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    })
+
+    console.log('📥 Response status:', response.status)
+
+    if (response.ok) {
+      const responseData = await response.json()
+      console.log('✅ Success response:', responseData)
+
+      originalGroupIds.value = groupIds
+      console.log('✅ Groups updated successfully')
+
+      emit('updated')
+      emit('close')
+    } else {
+      const errorText = await response.text()
+      console.error('❌ Failed to update groups:', response.status, errorText)
+      alert(`Failed to save changes: ${response.status} - ${errorText}`)
+    }
+  } catch (error) {
+    console.error('❌ Error saving changes:', error)
+    alert(`Error saving changes: ${error.message}`)
+  } finally {
+    loading.value = false
+  }
 }
 
 // ========== LIFECYCLE ==========
 onMounted(async () => {
-  await loadAllGroups()
+  console.log('🚀 Modal mounted for employee:', props.employee.fullName)
+  console.log('📋 Received current groups:', props.currentGroups)
 
-  // Initialize selected groups and original state
-  selectedGroups.value = [...props.currentGroups]
-  originalGroupIds.value = props.currentGroups.map(g => g.id)
+  // Charger tous les groupes disponibles ET les groupes actuels de l'employé
+  await Promise.all([
+    loadAllGroups(),
+    loadEmployeeCurrentGroups()
+  ])
+
+  console.log('✅ Modal initialization complete')
 })
 </script>
 

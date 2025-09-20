@@ -1,5 +1,6 @@
 package com.pcagrade.order.service;
 
+import com.github.f4b6a3.ulid.Ulid;
 import com.pcagrade.order.entity.Employee;
 import com.pcagrade.order.repository.EmployeeRepository;
 import jakarta.persistence.EntityManager;
@@ -12,6 +13,8 @@ import org.springframework.validation.annotation.Validated;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+
+import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -135,23 +138,28 @@ public class EmployeeService {
     /**
      * Get all active employees
      */
+    /**
+     * Get all active employees - FIXED VERSION
+     */
     public List<Map<String, Object>> getAllActiveEmployees() {
         try {
             log.debug("Loading active employees from j_employee table...");
 
             String sql = """
-                SELECT 
-                    HEX(e.id) as id,
-                    e.first_name as firstName,
-                    e.last_name as lastName,
-                    e.email,
-                    COALESCE(e.work_hours_per_day, 8) as workHoursPerDay,
-                    COALESCE(e.active, 1) as active,
-                    e.creation_date as creationDate
-                FROM j_employee e
-                WHERE COALESCE(e.active, 1) = 1
-                ORDER BY e.last_name, e.first_name
-            """;
+                    SELECT 
+                        id as id,  -- Récupérer l'ID binaire directement
+                        e.first_name as firstName,
+                        e.last_name as lastName,
+                        e.email,
+                        COALESCE(e.work_hours_per_day, 8) as workHoursPerDay,
+                        COALESCE(e.active, 1) as active,
+                        COALESCE(e.efficiency_rating, 1.0) as efficiencyRating,
+                        e.creation_date as creationDate,
+                        e.modification_date as modificationDate
+                    FROM j_employee e
+                    WHERE COALESCE(e.active, 1) = 1
+                    ORDER BY e.last_name, e.first_name
+                """;
 
             Query query = entityManager.createNativeQuery(sql);
             @SuppressWarnings("unchecked")
@@ -159,40 +167,52 @@ public class EmployeeService {
 
             List<Map<String, Object>> employees = new ArrayList<>();
 
-            log.debug("Found {} active employees", results.size());
+            log.info("Found {} active employees in database", results.size());
 
             for (Object[] row : results) {
                 try {
                     Map<String, Object> employee = new HashMap<>();
 
-                    // Mapping sécurisé avec null checks
-                    employee.put("id", (String) row[0]);
-                    employee.put("firstName", (String) row[1]);
-                    employee.put("lastName", (String) row[2]);
-                    employee.put("email", (String) row[3]);
-                    employee.put("workHoursPerDay", row[4] != null ? ((Number) row[4]).intValue() : 8);
-                    employee.put("active", row[5] != null ? ((Number) row[5]).intValue() == 1 : true);
-                    employee.put("creationDate", row[6]);
+                    // Convertir l'ID binaire en ULID
+                    byte[] idBytes = (byte[]) row[0];
+                    ByteBuffer buffer = ByteBuffer.wrap(idBytes);
+                    UUID uuid = new UUID(buffer.getLong(), buffer.getLong());
+                    Ulid ulid = Ulid.from(uuid);
+                    String ulidString = ulid.toString();
 
-                    // Computed fields
-                    employee.put("fullName", row[1] + " " + row[2]);
+                    employee.put("id", ulidString);  // ULID au lieu de HEX
+                    employee.put("firstName", firstName);
+                    employee.put("lastName", lastName);
+                    employee.put("fullName", firstName + " " + lastName);
+                    employee.put("email", email);
+                    employee.put("workHoursPerDay", workHours);
+                    employee.put("active", active);
+                    employee.put("efficiencyRating", efficiency);
+                    employee.put("creationDate", row[7]);
+                    employee.put("modificationDate", row[8]);
+
+                    // Computed fields for frontend
+                    employee.put("dailyCapacityMinutes", workHours * 60);
+                    employee.put("dailyCardCapacity", (int) Math.floor((workHours * 60) / 3)); // 3 minutes per card
 
                     employees.add(employee);
 
+                    log.debug("✅ Mapped employee: {} {} (ID: {})", firstName, lastName, idBytes);
+
                 } catch (Exception e) {
-                    log.error("Error processing employee row", e);
+                    log.error("❌ Error mapping employee row: {}", e.getMessage());
+                    continue; // Skip this employee but continue with others
                 }
             }
 
-            log.debug("Successfully processed {} employees", employees.size());
+            log.info("✅ Successfully mapped {} employees for frontend", employees.size());
             return employees;
 
         } catch (Exception e) {
-            log.error("Error getting active employees", e);
-            return new ArrayList<>();
+            log.error("❌ Error loading active employees: {}", e.getMessage(), e);
+            return new ArrayList<>(); // Return empty list instead of null
         }
     }
-
     /**
      * Validate new employee business rules
      */
@@ -233,4 +253,7 @@ public class EmployeeService {
             return false;
         }
     }
+
+
+
 }
