@@ -138,28 +138,23 @@ public class EmployeeService {
     /**
      * Get all active employees
      */
-    /**
-     * Get all active employees - FIXED VERSION
-     */
     public List<Map<String, Object>> getAllActiveEmployees() {
         try {
             log.debug("Loading active employees from j_employee table...");
 
             String sql = """
-                    SELECT 
-                        id as id,  -- Récupérer l'ID binaire directement
-                        e.first_name as firstName,
-                        e.last_name as lastName,
-                        e.email,
-                        COALESCE(e.work_hours_per_day, 8) as workHoursPerDay,
-                        COALESCE(e.active, 1) as active,
-                        COALESCE(e.efficiency_rating, 1.0) as efficiencyRating,
-                        e.creation_date as creationDate,
-                        e.modification_date as modificationDate
-                    FROM j_employee e
-                    WHERE COALESCE(e.active, 1) = 1
-                    ORDER BY e.last_name, e.first_name
-                """;
+            SELECT 
+                HEX(e.id) as id,
+                e.first_name,
+                e.last_name,
+                e.email,
+                COALESCE(e.work_hours_per_day, 8) as workHoursPerDay,
+                COALESCE(e.active, 1) as active,
+                e.creation_date as creationDate
+            FROM j_employee e
+            WHERE COALESCE(e.active, 1) = 1
+            ORDER BY e.last_name, e.first_name
+        """;
 
             Query query = entityManager.createNativeQuery(sql);
             @SuppressWarnings("unchecked")
@@ -167,52 +162,51 @@ public class EmployeeService {
 
             List<Map<String, Object>> employees = new ArrayList<>();
 
-            log.info("Found {} active employees in database", results.size());
+            log.debug("Found {} active employees", results.size());
 
             for (Object[] row : results) {
                 try {
                     Map<String, Object> employee = new HashMap<>();
 
-                    // Convertir l'ID binaire en ULID
-                    byte[] idBytes = (byte[]) row[0];
-                    ByteBuffer buffer = ByteBuffer.wrap(idBytes);
-                    UUID uuid = new UUID(buffer.getLong(), buffer.getLong());
-                    Ulid ulid = Ulid.from(uuid);
-                    String ulidString = ulid.toString();
+                    // ✅ CORRECTION: Utiliser les indices du tableau row[], pas des variables inexistantes
+                    String id = (String) row[0];                    // HEX(e.id)
+                    String firstName = (String) row[1];             // e.first_name
+                    String lastName = (String) row[2];              // e.last_name
+                    String email = (String) row[3];                 // e.email
+                    Object workHoursObj = row[4];                   // workHoursPerDay
+                    Object activeObj = row[5];                      // active
+                    Object creationDateObj = row[6];                // creation_date
 
-                    employee.put("id", ulidString);  // ULID au lieu de HEX
+                    // Mapping sécurisé avec null checks
+                    employee.put("id", id);
                     employee.put("firstName", firstName);
                     employee.put("lastName", lastName);
-                    employee.put("fullName", firstName + " " + lastName);
                     employee.put("email", email);
-                    employee.put("workHoursPerDay", workHours);
-                    employee.put("active", active);
-                    employee.put("efficiencyRating", efficiency);
-                    employee.put("creationDate", row[7]);
-                    employee.put("modificationDate", row[8]);
+                    employee.put("workHoursPerDay", workHoursObj != null ?
+                            ((Number) workHoursObj).intValue() : 8);
+                    employee.put("active", activeObj != null ?
+                            ((Number) activeObj).intValue() == 1 : true);
+                    employee.put("creationDate", creationDateObj);
 
-                    // Computed fields for frontend
-                    employee.put("dailyCapacityMinutes", workHours * 60);
-                    employee.put("dailyCardCapacity", (int) Math.floor((workHours * 60) / 3)); // 3 minutes per card
+                    // Computed fields - maintenant que firstName et lastName sont définis
+                    employee.put("fullName", firstName + " " + lastName);
 
                     employees.add(employee);
 
-                    log.debug("✅ Mapped employee: {} {} (ID: {})", firstName, lastName, idBytes);
-
                 } catch (Exception e) {
-                    log.error("❌ Error mapping employee row: {}", e.getMessage());
-                    continue; // Skip this employee but continue with others
+                    log.error("Error processing employee row", e);
                 }
             }
 
-            log.info("✅ Successfully mapped {} employees for frontend", employees.size());
+            log.debug("Successfully processed {} employees", employees.size());
             return employees;
 
         } catch (Exception e) {
-            log.error("❌ Error loading active employees: {}", e.getMessage(), e);
-            return new ArrayList<>(); // Return empty list instead of null
+            log.error("Error getting active employees", e);
+            return new ArrayList<>();
         }
     }
+
     /**
      * Validate new employee business rules
      */
@@ -254,6 +248,64 @@ public class EmployeeService {
         }
     }
 
+    /**
+     * Create employee from Map data (for JSON endpoints)
+     */
+    public Employee createEmployeeFromMap(Map<String, Object> employeeData) {
+        try {
+            log.info("Creating employee from map data");
 
+            // 1. Extract and validate required fields
+            String firstName = (String) employeeData.get("firstName");
+            String lastName = (String) employeeData.get("lastName");
+            String email = (String) employeeData.get("email");
+
+            if (firstName == null || firstName.trim().isEmpty() ||
+                    lastName == null || lastName.trim().isEmpty()) {
+                throw new IllegalArgumentException("First name and last name are required");
+            }
+
+            // 2. Extract optional fields with defaults
+            Integer workHours = DEFAULT_WORK_HOURS_PER_DAY;
+            if (employeeData.containsKey("workHoursPerDay")) {
+                Object workHoursObj = employeeData.get("workHoursPerDay");
+                if (workHoursObj instanceof Number) {
+                    workHours = ((Number) workHoursObj).intValue();
+                }
+            }
+
+            Boolean active = true;
+            if (employeeData.containsKey("active")) {
+                active = (Boolean) employeeData.get("active");
+            }
+
+            Double efficiency = 1.0;
+            if (employeeData.containsKey("efficiencyRating")) {
+                Object efficiencyObj = employeeData.get("efficiencyRating");
+                if (efficiencyObj instanceof Number) {
+                    efficiency = ((Number) efficiencyObj).doubleValue();
+                }
+            }
+
+            // 3. Create Employee entity
+            Employee employee = Employee.builder()
+                    .firstName(firstName.trim())
+                    .lastName(lastName.trim())
+                    .email(email != null ? email.trim() : null)
+                    .workHoursPerDay(workHours)
+                    .active(active)
+                    .efficiencyRating(efficiency)
+                    .creationDate(LocalDateTime.now())
+                    .modificationDate(LocalDateTime.now())
+                    .build();
+
+            // 4. Save using the standard create method
+            return createEmployee(employee);
+
+        } catch (Exception e) {
+            log.error("Error creating employee from map", e);
+            throw new RuntimeException("Error creating employee: " + e.getMessage(), e);
+        }
+    }
 
 }

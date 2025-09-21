@@ -1,3 +1,5 @@
+<!-- ============= CORRECTION EmployeeDetailPage.vue - FOCUS SUR LES COMMANDES ============= -->
+
 <template>
   <div class="min-h-screen bg-gray-50 p-6">
     <div class="max-w-7xl mx-auto">
@@ -11,20 +13,18 @@
           >
             ← Back to Employees
           </button>
-          <!-- 👈 AJOUTER CETTE SECTION -->
-          <div class="mt-8">
-            <EmployeeGroupsCard
-              :employee="employeeData"
-              @updated="refreshData"
-            />
-          </div>
           <div class="text-gray-400">/</div>
           <h1 class="text-2xl font-bold text-gray-900">
-            {{ employeeData?.name || 'Employee Details' }}
+            📋 {{ mode === 'planning' ? 'Planning View' : 'Employee Details' }}
           </h1>
         </div>
         <div class="flex items-center space-x-3">
-          <span class="text-sm text-gray-600">{{ selectedDate }}</span>
+          <input
+            v-model="selectedDate"
+            type="date"
+            class="border rounded-lg px-3 py-2"
+            @change="loadEmployeeOrders"
+          >
           <button
             @click="refreshData"
             :disabled="loading"
@@ -35,209 +35,163 @@
         </div>
       </div>
 
-      <!-- En-tête employé -->
-      <div class="bg-white rounded-lg shadow-sm border p-6 mb-6">
+      <!-- En-tête employé compact -->
+      <div v-if="employeeData" class="bg-white rounded-lg shadow-sm border p-4 mb-6">
         <div class="flex items-center justify-between">
           <div class="flex items-center">
-            <div class="w-20 h-20 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-              <span class="text-white font-bold text-2xl">
-                {{ employeeData?.name?.charAt(0) || '?' }}
+            <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+              <span class="text-white font-bold">
+                {{ getEmployeeInitials(employeeData) }}
               </span>
             </div>
-            <div class="ml-6">
-              <h2 class="text-2xl font-bold text-gray-900">{{ employeeData?.name || 'Unknown Employee' }}</h2>
-              <p class="text-gray-600">{{ employeeData?.email || 'No email' }}</p>
-              <div class="flex items-center space-x-4 mt-2">
-                <span :class="[
-                  'px-3 py-1 rounded-full text-sm font-medium',
-                  employeeData?.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                ]">
-                  {{ employeeData?.active ? '✅ Active' : '❌ Inactive' }}
-                </span>
-                <span class="text-sm text-gray-600">
-                  {{ employeeData?.workHoursPerDay || 8 }}h/day
-                </span>
-              </div>
+            <div class="ml-4">
+              <h2 class="text-lg font-bold text-gray-900">{{ employeeData.fullName || employeeData.name }}</h2>
+              <p class="text-sm text-gray-600">{{ employeeData.email }}</p>
             </div>
           </div>
-
-          <!-- Statistiques rapides -->
           <div class="text-right">
-            <div class="grid grid-cols-2 gap-4">
-              <div class="text-center">
-                <div class="text-2xl font-bold text-blue-600">{{ orders.length }}</div>
-                <div class="text-sm text-gray-600">Orders</div>
-              </div>
-              <div class="text-center">
-                <div class="text-2xl font-bold text-green-600">{{ totalCards }}</div>
-                <div class="text-sm text-gray-600">Cards</div>
-              </div>
-              <div class="text-center">
-                <div class="text-2xl font-bold text-purple-600">
-                  {{ Math.round(totalDuration / 60) }}h
-                </div>
-                <div class="text-sm text-gray-600">Duration</div>
-              </div>
-              <div class="text-center">
-                <div class="text-2xl font-bold text-orange-600">{{ workloadPercentage }}%</div>
-                <div class="text-sm text-gray-600">Workload</div>
-              </div>
+            <div class="text-sm text-gray-600">Workload for {{ selectedDate }}</div>
+            <div class="text-lg font-bold" :class="workloadPercentage > 100 ? 'text-red-600' : workloadPercentage > 80 ? 'text-orange-600' : 'text-green-600'">
+              {{ workloadPercentage }}%
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Barre de progression globale -->
-      <div class="bg-white rounded-lg shadow-sm border p-6 mb-6">
-        <div class="flex justify-between items-center mb-2">
-          <h3 class="text-lg font-semibold text-gray-900">Daily Workload</h3>
-          <span class="text-sm font-medium text-gray-600">
-            {{ totalDuration }}min / {{ (employeeData?.workHoursPerDay || 8) * 60 }}min
-          </span>
-        </div>
-        <div class="w-full bg-gray-200 rounded-full h-4">
-          <div
-            :class="[
-              'h-4 rounded-full transition-all duration-500',
-              workloadPercentage >= 100 ? 'bg-red-500' :
-              workloadPercentage >= 80 ? 'bg-yellow-500' :
-              'bg-green-500'
-            ]"
-            :style="{ width: Math.min(workloadPercentage, 100) + '%' }"
-          ></div>
-        </div>
-      </div>
-
-      <!-- Liste des commandes -->
-      <div class="space-y-4">
-        <h3 class="text-xl font-bold text-gray-900 flex items-center">
-          📋 Assigned Orders
-          <span class="ml-2 text-sm font-normal bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-            {{ orders.length }} orders
-          </span>
-        </h3>
-
-        <div v-if="loading" class="text-center py-8">
-          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p class="text-gray-600">Loading orders...</p>
+      <!-- ✅ SECTION PRINCIPALE : COMMANDES ASSIGNÉES -->
+      <div class="bg-white rounded-lg shadow-sm border mb-6">
+        <div class="p-6 border-b border-gray-200">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">📦 Assigned Orders</h3>
+              <p class="text-sm text-gray-600 mt-1">Orders assigned to this employee for {{ selectedDate }}</p>
+            </div>
+            <div class="text-right">
+              <div class="text-2xl font-bold text-blue-600">{{ orders.length }}</div>
+              <div class="text-sm text-gray-600">Total Orders</div>
+            </div>
+          </div>
         </div>
 
-        <div v-else-if="orders.length === 0" class="text-center py-8 bg-white rounded-lg shadow-sm border">
-          <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-          </svg>
-          <h3 class="text-lg font-medium text-gray-900 mb-2">No orders assigned</h3>
-          <p class="text-gray-600">This employee has no orders assigned for the selected date.</p>
+        <!-- Statistics Cards -->
+        <div class="p-6 border-b border-gray-200">
+          <div class="grid grid-cols-3 gap-4">
+            <div class="text-center">
+              <div class="text-xl font-bold text-purple-600">{{ totalCards }}</div>
+              <div class="text-sm text-gray-600">Total Cards</div>
+            </div>
+            <div class="text-center">
+              <div class="text-xl font-bold text-green-600">{{ formatDuration(totalDuration) }}</div>
+              <div class="text-sm text-gray-600">Total Duration</div>
+            </div>
+            <div class="text-center">
+              <div class="text-xl font-bold text-gray-600">{{ employeeData?.workHoursPerDay || 8 }}h</div>
+              <div class="text-sm text-gray-600">Daily Capacity</div>
+            </div>
+          </div>
         </div>
 
-        <div v-else class="space-y-4">
-          <div
-            v-for="order in orders"
-            :key="order.id"
-            class="bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow"
-          >
-            <!-- En-tête de commande -->
-            <div class="p-6 border-b">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center">
-                  <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <span class="text-blue-600 font-bold">📦</span>
-                  </div>
-                  <div class="ml-4">
-                    <h4 class="text-lg font-semibold text-gray-900">{{ order.orderNumber }}</h4>
-                    <p class="text-sm text-gray-600">
-                      {{ order.cardCount || 0 }} cards •
-                      {{ formatDuration(order.estimatedDuration) }} •
-                      Priority: {{ order.priority || 'Medium' }}
-                    </p>
-                  </div>
+        <!-- Orders List -->
+        <div class="p-6">
+          <!-- Loading State -->
+          <div v-if="loading" class="text-center py-8">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p class="text-gray-600">Loading assigned orders...</p>
+          </div>
+
+          <!-- Empty State -->
+          <div v-else-if="orders.length === 0" class="text-center py-8">
+            <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+            </svg>
+            <h3 class="text-lg font-medium text-gray-900 mb-2">No Orders Assigned</h3>
+            <p class="text-gray-600 mb-4">No orders have been assigned to this employee for {{ selectedDate }}</p>
+            <button
+              @click="generatePlanningForEmployee"
+              class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            >
+              📋 Generate Planning for This Employee
+            </button>
+          </div>
+
+          <!-- Orders Grid -->
+          <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div
+              v-for="order in orders"
+              :key="order.id || order.orderId"
+              class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+            >
+              <!-- Order Header -->
+              <div class="flex items-center justify-between mb-3">
+                <div>
+                  <h4 class="font-semibold text-gray-900">{{ order.orderNumber || order.numCommande }}</h4>
+                  <p class="text-sm text-gray-600">{{ order.cardCount || 0 }} cards</p>
                 </div>
+                <span :class="[
+                  'px-2 py-1 rounded text-xs font-medium',
+                  getPriorityColor(order.priority)
+                ]">
+                  {{ order.priority || 'MEDIUM' }}
+                </span>
+              </div>
 
-                <div class="flex items-center space-x-3">
-                  <span :class="[
-                    'px-3 py-1 rounded-full text-sm font-medium',
-                    getPriorityClass(order.priority)
-                  ]">
-                    {{ order.priority || 'Medium' }}
-                  </span>
-                  <span :class="[
-                    'px-3 py-1 rounded-full text-sm font-medium',
-                    getStatusClass(order.status)
-                  ]">
-                    {{ getStatusText(order.status) }}
-                  </span>
-                  <button
-                    @click="toggleOrderCards(order.orderId)"
-                    class="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg hover:bg-blue-100 text-sm font-medium"
-                  >
-                    {{ order.showCards ? '📁 Hide' : '🃏 Show' }} Cards
-                  </button>
+              <!-- Time Info -->
+              <div class="space-y-2 mb-3">
+                <div class="flex justify-between text-sm">
+                  <span class="text-gray-600">Duration:</span>
+                  <span class="font-medium">{{ formatDuration(order.estimatedDuration || order.durationMinutes || (order.cardCount * 3)) }}</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                  <span class="text-gray-600">Start Time:</span>
+                  <span class="font-medium">{{ order.startTime || '09:00' }}</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                  <span class="text-gray-600">End Time:</span>
+                  <span class="font-medium">{{ order.endTime || calculateEndTime(order) }}</span>
                 </div>
               </div>
 
-              <!-- Barre de progression de la commande -->
-              <div class="mt-4">
-                <div class="flex justify-between text-sm mb-1">
-                  <span class="text-gray-600">Progress</span>
-                  <span class="font-medium">{{ order.progress || 0 }}%</span>
+              <!-- Progress Bar -->
+              <div class="mb-3">
+                <div class="flex justify-between text-xs text-gray-600 mb-1">
+                  <span>Progress</span>
+                  <span>{{ order.progressPercentage || 0 }}%</span>
                 </div>
                 <div class="w-full bg-gray-200 rounded-full h-2">
                   <div
-                    class="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                    :style="{ width: (order.progress || 0) + '%' }"
+                    class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    :style="`width: ${order.progressPercentage || 0}%`"
                   ></div>
                 </div>
               </div>
-            </div>
 
-            <!-- Liste des cartes (accordéon) -->
-            <div v-if="order.showCards" class="border-t bg-gray-50">
-              <div class="p-6">
-                <div v-if="order.loadingCards" class="text-center py-4">
-                  <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                  <p class="text-sm text-gray-600">Loading cards...</p>
-                </div>
-
-                <div v-else-if="order.cards && order.cards.length > 0">
-                  <h5 class="text-sm font-semibold text-gray-700 mb-4">
-                    🃏 Cards in this order ({{ order.cards.length }})
-                  </h5>
-                  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                    <div
-                      v-for="card in order.cards"
-                      :key="card.id"
-                      class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow"
-                    >
-                      <div class="flex items-start justify-between mb-2">
-                        <div class="flex-1 min-w-0">
-                          <h6 class="font-medium text-gray-900 truncate">
-                            {{ card.name || 'Unknown Card' }}
-                          </h6>
-                          <p class="text-sm text-gray-500 truncate">
-                            {{ card.label_name || card.code_barre || 'No label' }}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div class="flex justify-between items-center text-xs text-gray-600">
-                        <span>⏱️ {{ formatDuration(card.duration || 3) }}</span>
-                        <span>💰 {{ (card.amount || 0).toFixed(2) }}€</span>
-                      </div>
-
-                      <div class="mt-2 text-xs text-gray-400 truncate" :title="card.id">
-                        ID: {{ card.id }}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div v-else class="text-center py-4 text-gray-500">
-                  <p>No cards found for this order</p>
-                </div>
+              <!-- Status -->
+              <div class="flex items-center justify-between">
+                <span :class="[
+                  'px-2 py-1 rounded text-xs font-medium',
+                  getStatusColor(order.status)
+                ]">
+                  {{ getStatusText(order.status) }}
+                </span>
+                <button
+                  @click="viewOrderDetails(order)"
+                  class="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                >
+                  View Details →
+                </button>
               </div>
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- ✅ SECTION SECONDAIRE : GROUPES (réduite) -->
+      <div v-if="mode !== 'planning' && employeeData" class="bg-white rounded-lg shadow-sm border p-4">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">👥 Employee Groups</h3>
+        <EmployeeGroupsCard
+          :employee="employeeData"
+          @updated="refreshData"
+        />
       </div>
 
     </div>
@@ -246,16 +200,16 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { API_BASE_URL, API_ENDPOINTS } from '@/config/api'
-import EmployeeGroupsCard from "@/components/groups/EmployeeGroupsCard.vue";
+import { API_BASE_URL } from '@/config/api'
+import EmployeeGroupsCard from "./groups/EmployeeGroupsCard.vue"
+
 // ========== PROPS ==========
 const props = defineProps<{
   employeeId: string
   selectedDate: string
-  mode?: 'gestion' | 'planning'
+  mode?: string
 }>()
 
-// ========== EMITS ==========
 const emit = defineEmits<{
   back: []
   refresh: []
@@ -263,8 +217,10 @@ const emit = defineEmits<{
 
 // ========== STATE ==========
 const loading = ref(false)
+const loadingEmployee = ref(false)
 const employeeData = ref<any>(null)
 const orders = ref<any[]>([])
+const selectedDate = ref(props.selectedDate)
 
 // ========== COMPUTED ==========
 const totalCards = computed(() => {
@@ -272,7 +228,7 @@ const totalCards = computed(() => {
 })
 
 const totalDuration = computed(() => {
-  return orders.value.reduce((sum, order) => sum + (order.estimatedDuration || 0), 0)
+  return orders.value.reduce((sum, order) => sum + (order.estimatedDuration || order.durationMinutes || (order.cardCount * 3)), 0)
 })
 
 const workloadPercentage = computed(() => {
@@ -281,188 +237,153 @@ const workloadPercentage = computed(() => {
 })
 
 // ========== METHODS ==========
-const refreshData = async () => {
-  emit('refresh')
-  await loadEmployeeData()
-  await loadEmployeeOrders()
+const getEmployeeInitials = (employee: any) => {
+  if (employee.firstName && employee.lastName) {
+    return `${employee.firstName.charAt(0)}${employee.lastName.charAt(0)}`
+  }
+  if (employee.fullName) {
+    const parts = employee.fullName.split(' ')
+    return parts.length > 1 ? `${parts[0].charAt(0)}${parts[1].charAt(0)}` : parts[0].charAt(0)
+  }
+  return '??'
+}
+
+const formatDuration = (minutes: number) => {
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+  if (hours > 0) {
+    return `${hours}h ${remainingMinutes}m`
+  }
+  return `${remainingMinutes}m`
+}
+
+const calculateEndTime = (order: any) => {
+  // Simple calculation - in a real app, this would be more sophisticated
+  const startTime = order.startTime || '09:00'
+  const duration = order.estimatedDuration || order.durationMinutes || (order.cardCount * 3)
+  // Return estimated end time (simplified)
+  return `${startTime} + ${formatDuration(duration)}`
+}
+
+const getPriorityColor = (priority: string) => {
+  switch (priority?.toUpperCase()) {
+    case 'URGENT': return 'bg-red-100 text-red-800'
+    case 'HIGH': return 'bg-orange-100 text-orange-800'
+    case 'MEDIUM': return 'bg-yellow-100 text-yellow-800'
+    case 'LOW': return 'bg-green-100 text-green-800'
+    default: return 'bg-gray-100 text-gray-800'
+  }
+}
+
+const getStatusColor = (status: any) => {
+  switch (status?.toString()) {
+    case '2':
+    case 'COMPLETED': return 'bg-green-100 text-green-800'
+    case '1':
+    case 'IN_PROGRESS': return 'bg-blue-100 text-blue-800'
+    case '0':
+    case 'PENDING': return 'bg-gray-100 text-gray-800'
+    default: return 'bg-gray-100 text-gray-800'
+  }
+}
+
+const getStatusText = (status: any) => {
+  switch (status?.toString()) {
+    case '2':
+    case 'COMPLETED': return 'Completed'
+    case '1':
+    case 'IN_PROGRESS': return 'In Progress'
+    case '0':
+    case 'PENDING': return 'Pending'
+    default: return 'Unknown'
+  }
 }
 
 const loadEmployeeData = async () => {
-  loading.value = true
+  loadingEmployee.value = true
   try {
-    const response = await fetch(`${API_BASE_URL}/api/employees/${props.employeeId}`) // ✅ Nouveau endpoint
+    console.log('🔍 Loading employee data for ID:', props.employeeId)
+
+    const response = await fetch(`${API_BASE_URL}/api/employees`)
     if (response.ok) {
       const data = await response.json()
-      employeeData.value = data.employee || data
+      const employees = data.employees || data || []
+      const employee = employees.find(emp => emp.id === props.employeeId)
+
+      if (employee) {
+        employeeData.value = {
+          ...employee,
+          fullName: employee.fullName || `${employee.firstName} ${employee.lastName}`,
+          name: employee.name || employee.fullName || `${employee.firstName} ${employee.lastName}`
+        }
+        console.log('✅ Employee data loaded:', employeeData.value)
+      }
     }
   } catch (error) {
-    console.error('Error loading employee data:', error)
+    console.error('❌ Error loading employee data:', error)
   } finally {
-    loading.value = false
+    loadingEmployee.value = false
   }
 }
 
 const loadEmployeeOrders = async () => {
   loading.value = true
   try {
-    const planningDate = '2025-06-01' // ou récupérez-la de la configuration
-    console.log('🔍 DEBUG - Loading orders for employee:', props.employeeId)
-    console.log('🔍 DEBUG - Selected date:', props.selectedDate)
+    console.log('📋 Loading orders for employee:', props.employeeId, 'date:', selectedDate.value)
 
-    const response = await fetch(`${API_BASE_URL}/api/planning/employee/${props.employeeId}?date=${props.selectedDate}`)
+    const response = await fetch(`${API_BASE_URL}/api/planning/employee/${props.employeeId}?date=${selectedDate.value}`)
+
     if (response.ok) {
       const data = await response.json()
-      console.log('🔍 DEBUG - Response data:', data)
+      console.log('✅ Employee orders loaded:', data)
 
       if (data.success) {
         orders.value = data.orders || []
-        console.log('Employee orders loaded:', orders.value.length, 'orders')
-        console.log('Summary:', data.summary)
+        console.log(`📦 Found ${orders.value.length} orders for employee`)
       } else {
-        console.error('Failed to load orders:', data.error)
         orders.value = []
       }
-    } else {
-      console.error('HTTP error loading orders:', response.status)
+    } else if (response.status === 404) {
+      console.log('ℹ️ No orders found for employee')
       orders.value = []
     }
+
   } catch (error) {
-    console.error('Error loading employee orders:', error)
+    console.error('❌ Error loading employee orders:', error)
     orders.value = []
   } finally {
     loading.value = false
   }
 }
-// Dans EmployeeDetailPage.vue, remplacez la méthode toggleOrderCards :
 
-// Dans EmployeeDetailPage.vue, remplacez la méthode toggleOrderCards :
-
-const toggleOrderCards = async (orderId) => {
-  console.log('🃏 toggleOrderCards called with:', orderId);
-  console.log('📊 Available orders:', orders.value.map(o => ({ id: o.id, orderId: o.orderId, orderNumber: o.orderNumber })));
-
-  // Essayons de trouver l'ordre avec différentes propriétés
-  let order = orders.value.find(o => o.orderId === orderId);
-  if (!order) {
-    order = orders.value.find(o => o.id === orderId);
-  }
-
-  if (!order) {
-    console.error('❌ Order not found with any ID:', orderId);
-    console.error('❌ Available orders structure:', orders.value[0]);
-    return;
-  }
-
-  console.log('✅ Order found:', order);
-
-  order.showCards = !order.showCards;
-  console.log('🔄 showCards toggled to:', order.showCards);
-
-  if (order.showCards && (!order.cards || order.cards.length === 0)) {
-    order.loadingCards = true;
-
-    // Utilisez l'orderId ou l'id selon ce qui fonctionne
-    const actualOrderId = order.orderId || order.id;
-    console.log('📡 Loading cards for actual order ID:', actualOrderId);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/frontend/employees/order/${actualOrderId}/cards`);
-      console.log('📡 Response status:', response.status);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Cards data received:', data);
-
-        order.cards = data.cards || [];
-        console.log('🃏 Cards loaded:', order.cards.length, 'cards');
-
-        if (order.cards.length === 0) {
-          console.warn('⚠️ No cards found for this order');
-        }
-      } else {
-        console.error('❌ Failed to fetch cards:', response.status);
-        const errorText = await response.text();
-        console.error('❌ Error details:', errorText);
-      }
-    } catch (error) {
-      console.error('❌ Error loading order cards:', error);
-    } finally {
-      order.loadingCards = false;
-    }
-  }
-}
-const formatDuration = (minutes: number) => {
-  if (minutes < 60) {
-    return `${minutes}min`
-  }
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  return remainingMinutes > 0 ? `${hours}h${remainingMinutes}min` : `${hours}h`
-}
-
-const getPriorityClass = (priority: string) => {
-  switch (priority?.toLowerCase()) {
-    case 'urgent':
-    case 'high':
-      return 'bg-red-100 text-red-800'
-    case 'medium':
-      return 'bg-yellow-100 text-yellow-800'
-    case 'low':
-      return 'bg-green-100 text-green-800'
-    default:
-      return 'bg-gray-100 text-gray-800'
+const generatePlanningForEmployee = async () => {
+  try {
+    console.log('🚀 Generating planning for employee:', props.employeeId)
+    // Redirect to main planning page or trigger generation
+    alert('Planning generation for individual employees coming soon!')
+  } catch (error) {
+    console.error('Error generating planning:', error)
   }
 }
 
-const getStatusClass = (status: string) => {
-  switch (status?.toLowerCase()) {
-    case 'completed':
-      return 'bg-green-100 text-green-800'
-    case 'in_progress':
-      return 'bg-blue-100 text-blue-800'
-    case 'scheduled':
-      return 'bg-purple-100 text-purple-800'
-    default:
-      return 'bg-gray-100 text-gray-800'
-  }
+const viewOrderDetails = (order: any) => {
+  console.log('📋 View order details:', order)
+  // Implement order detail view
+  alert(`Order Details: ${order.orderNumber}\nCards: ${order.cardCount}\nDuration: ${formatDuration(order.estimatedDuration || order.durationMinutes || 0)}`)
 }
 
-const getStatusText = (status: string) => {
-  switch (status?.toLowerCase()) {
-    case 'scheduled':
-      return '📅 Scheduled'
-    case 'in_progress':
-      return '⏳ In Progress'
-    case 'completed':
-      return '✅ Completed'
-    case 'cancelled':
-      return '❌ Cancelled'
-    default:
-      return '❓ Unknown'
-  }
+const refreshData = async () => {
+  await Promise.all([
+    loadEmployeeData(),
+    loadEmployeeOrders()
+  ])
+  emit('refresh')
 }
+
+// ========== WATCHERS ==========
+watch(() => props.employeeId, refreshData, { immediate: false })
+watch(selectedDate, loadEmployeeOrders)
 
 // ========== LIFECYCLE ==========
-onMounted(() => {
-  loadEmployeeData()
-  loadEmployeeOrders()
-})
-
-watch(() => props.selectedDate, () => {
-  loadEmployeeOrders()
-})
+onMounted(refreshData)
 </script>
-
-<style scoped>
-.transition-shadow {
-  transition: box-shadow 0.2s ease;
-}
-
-.transition-colors {
-  transition: background-color 0.2s, color 0.2s;
-}
-
-.transition-all {
-  transition: all 0.3s ease;
-}
-</style>

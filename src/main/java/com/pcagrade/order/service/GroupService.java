@@ -4,20 +4,26 @@ import com.pcagrade.order.entity.Employee;
 import com.pcagrade.order.entity.Group;
 import com.pcagrade.order.repository.EmployeeRepository;
 import com.pcagrade.order.repository.GroupRepository;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * Group Service - Role Management
@@ -437,4 +443,31 @@ public class GroupService {
             log.info("Created default group: {}", name);
         }
     }
+
+    /**
+     * Get all employees in a specific group
+     */
+    public List<Employee> getEmployeesInGroup(UUID groupId) {
+        try {
+            log.debug("Getting employees for group: {}", groupId);
+
+            Optional<Group> groupOpt = groupRepository.findById(groupId);
+            if (groupOpt.isEmpty()) {
+                log.warn("Group not found: {}", groupId);
+                return new ArrayList<>();
+            }
+
+            Group group = groupOpt.get();
+            List<Employee> employees = new ArrayList<>(group.getEmployees());
+
+            log.debug("Found {} employees in group {}", employees.size(), group.getName());
+            return employees;
+
+        } catch (Exception e) {
+            log.error("Error getting employees for group: {}", groupId, e);
+            return new ArrayList<>();
+        }
+    }
+
+
 }

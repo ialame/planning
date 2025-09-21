@@ -290,49 +290,98 @@ const removeAllMembers = () => {
   }
 }
 
+// ============= REMPLACEMENT COMPLET DE LA MÉTHODE saveChanges =============
+// Dans EmployeeAssignmentModal.vue, remplacez ENTIÈREMENT la méthode saveChanges par ceci :
+
 const saveChanges = async () => {
   if (!props.group || !hasChanges.value) return
 
   loading.value = true
   try {
-    const memberIds = currentMembers.value.map(m => m.id)
+    console.log('🔄 Saving group member changes...')
+    console.log('Group:', props.group.id)
+    console.log('Current members:', currentMembers.value.map(m => `${m.id} (${m.fullName})`))
+    console.log('Original members:', originalMemberIds.value)
 
-    const response = await fetch(`${API_BASE_URL}/api/v2/groups/employee/${props.group.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        employeeId: props.group.id, // This will be ignored on backend for bulk update
-        groupIds: memberIds // We need to implement bulk employee-group assignment
-      })
-    })
+    const currentIds = new Set(currentMembers.value.map(m => m.id))
+    const originalIds = new Set(originalMemberIds.value)
 
-    // For now, we'll update each employee individually
-    // Remove all current assignments for this group
-    const removePromises = originalMemberIds.value.map(empId =>
-      fetch(`${API_BASE_URL}/api/v2/groups/${props.group!.id}/employees/${empId}`, {
-        method: 'DELETE'
-      })
-    )
+    // Employés à ajouter au groupe
+    const employeesToAdd = currentMembers.value.filter(emp => !originalIds.has(emp.id))
 
-    // Add new assignments
-    const addPromises = currentMembers.value.map(emp =>
-      fetch(`${API_BASE_URL}/api/v2/groups/${props.group!.id}/employees/${emp.id}`, {
-        method: 'POST'
-      })
-    )
+    // Employés à retirer du groupe
+    const employeesToRemove = originalMemberIds.value.filter(id => !currentIds.has(id))
 
-    await Promise.all([...removePromises, ...addPromises])
+    console.log('Adding employees:', employeesToAdd.map(e => `${e.id} (${e.fullName})`))
+    console.log('Removing employees:', employeesToRemove)
 
+    const promises = []
+
+    // Ajouter les nouveaux employés
+    for (const employee of employeesToAdd) {
+      console.log(`➕ Adding ${employee.fullName} to group ${props.group.name}`)
+      promises.push(
+        fetch(`${API_BASE_URL}/api/v2/groups/${props.group.id}/employees/${employee.id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        }).then(async response => {
+          if (!response.ok) {
+            const errorText = await response.text()
+            throw new Error(`Failed to add employee ${employee.fullName}: ${response.status} - ${errorText}`)
+          }
+          console.log(`✅ Successfully added ${employee.fullName} to group`)
+          return response.json()
+        })
+      )
+    }
+
+    // Retirer les anciens employés
+    for (const employeeId of employeesToRemove) {
+      const employee = props.employees.find(e => e.id === employeeId)
+      const employeeName = employee ? employee.fullName : employeeId
+
+      console.log(`➖ Removing ${employeeName} from group ${props.group.name}`)
+      promises.push(
+        fetch(`${API_BASE_URL}/api/v2/groups/${props.group.id}/employees/${employeeId}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' }
+        }).then(async response => {
+          if (!response.ok) {
+            const errorText = await response.text()
+            throw new Error(`Failed to remove employee ${employeeName}: ${response.status} - ${errorText}`)
+          }
+          console.log(`✅ Successfully removed ${employeeName} from group`)
+          return response.json()
+        })
+      )
+    }
+
+    // Exécuter toutes les opérations
+    console.log(`🚀 Executing ${promises.length} operations...`)
+    await Promise.all(promises)
+
+    // Mettre à jour l'état local
     originalMemberIds.value = currentMembers.value.map(m => m.id)
+
+    console.log('✅ All changes saved successfully!')
     emit('updated')
 
   } catch (error) {
-    console.error('Error saving changes:', error)
+    console.error('❌ Error saving changes:', error)
+
+    // Afficher l'erreur complète pour le debug
+    let errorMessage = 'Unknown error'
+    if (error instanceof Error) {
+      errorMessage = error.message
+    } else if (typeof error === 'string') {
+      errorMessage = error
+    }
+
+    alert(`Failed to save changes: ${errorMessage}`)
   } finally {
     loading.value = false
   }
 }
-
 const getEmployeeInitials = (employee: Employee) => {
   return `${employee.firstName?.charAt(0) || ''}${employee.lastName?.charAt(0) || ''}`
 }

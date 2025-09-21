@@ -1,18 +1,17 @@
 package com.pcagrade.order.controller;
 
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.Query;
-import org.springframework.transaction.annotation.Transactional;
+import com.github.f4b6a3.ulid.Ulid;
 
 import com.pcagrade.order.dto.GroupDto;
+import com.pcagrade.order.entity.Employee;
 import com.pcagrade.order.entity.Group;
+import com.pcagrade.order.repository.GroupRepository;
 import com.pcagrade.order.service.GroupService;
 import com.pcagrade.order.service.mapper.GroupMapperService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
-
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,7 +23,15 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.UUID;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import org.springframework.transaction.annotation.Transactional;
+
+
 import java.util.*;
+
 
 /**
  * Enhanced Group Controller - Role Management API with DTOs
@@ -45,6 +52,9 @@ public class EnhancedGroupController {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private GroupRepository groupRepository;
 
     // ========== CRUD OPERATIONS ==========
 
@@ -143,47 +153,33 @@ public class EnhancedGroupController {
         }
     }
 
+
     /**
-     * 🔍 GET GROUP BY ID
-     * Endpoint: GET /api/v2/groups/{id}
+     * Get all employees in a specific group
      */
-    @GetMapping("/{id}")
-    @Operation(summary = "Get group by ID", description = "Retrieve a specific group by its ID with employee details")
-    @ApiResponse(responseCode = "200", description = "Group found")
-    @ApiResponse(responseCode = "404", description = "Group not found")
-    public ResponseEntity<GroupDto.GroupWithEmployees> getGroupById(
-            @PathVariable String id,
-            @Parameter(description = "Include employee details") @RequestParam(defaultValue = "true") boolean includeEmployees) {
+    public List<Employee> getEmployeesInGroup(UUID groupId) {
         try {
-            log.info("🔍 Getting group by ID: {}", id);
+            log.debug("Getting employees for group: {}", groupId);
 
-            UUID groupId = UUID.fromString(id);
-            Optional<Group> groupOpt = groupService.findById(groupId);
-
-            if (groupOpt.isPresent()) {
-                Group group = groupOpt.get();
-                GroupDto.GroupWithEmployees result = includeEmployees ?
-                        groupMapper.toGroupWithEmployees(group) :
-                        GroupDto.GroupWithEmployees.builder()
-                                .groupInfo(groupMapper.toGroupInfo(group, groupService.countActiveEmployeesInGroup(groupId)))
-                                .totalEmployees(groupService.countActiveEmployeesInGroup(groupId).intValue())
-                                .build();
-
-                log.debug("✅ Group found: {}", group.getName());
-                return ResponseEntity.ok(result);
-            } else {
-                log.warn("⚠️ Group not found: {}", id);
-                return ResponseEntity.notFound().build();
+            Optional<Group> groupOpt = groupRepository.findById(groupId);
+            if (groupOpt.isEmpty()) {
+                log.warn("Group not found: {}", groupId);
+                return new ArrayList<>();
             }
 
-        } catch (IllegalArgumentException e) {
-            log.warn("⚠️ Invalid group ID format: {}", id);
-            return ResponseEntity.badRequest().build();
+            Group group = groupOpt.get();
+            List<Employee> employees = new ArrayList<>(group.getEmployees());
+
+            log.debug("Found {} employees in group {}", employees.size(), group.getName());
+            return employees;
+
         } catch (Exception e) {
-            log.error("❌ Error getting group by ID: {}", id, e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            log.error("Error getting employees for group: {}", groupId, e);
+            return new ArrayList<>();
         }
     }
+
+
 
     /**
      * ➕ CREATE NEW GROUP
@@ -323,71 +319,32 @@ public class EnhancedGroupController {
     // et GARDEZ SEULEMENT celle-ci :
 
     /**
-     * 👥 GET GROUPS FOR EMPLOYEE - MÊME PATTERN QUE EMPLOYEES
+     * 👥 GET GROUPS FOR EMPLOYEE - CORRIGÉ
      * Endpoint: GET /api/v2/groups/employee/{employeeId}
      */
     @GetMapping("/employee/{employeeId}")
+    @Operation(summary = "Get groups for employee", description = "Get all groups assigned to an employee")
     public ResponseEntity<Map<String, Object>> getGroupsForEmployee(@PathVariable String employeeId) {
         try {
             log.info("👥 Getting groups for employee: {}", employeeId);
 
-            String cleanEmployeeId = employeeId.replace("-", "").toUpperCase();
-
-            String sql = """
-            SELECT 
-                HEX(g.id) as id,
-                g.name,
-                g.description,
-                g.permission_level as permissionLevel,
-                g.active,
-                g.creation_date as creationDate,
-                g.modification_date as modificationDate
-            FROM j_group g
-            INNER JOIN j_employee_group eg ON g.id = eg.group_id
-            WHERE HEX(eg.employee_id) = ?
-            AND g.active = 1
-            ORDER BY g.permission_level DESC
-            """;
-
-            Query query = entityManager.createNativeQuery(sql);
-            query.setParameter(1, cleanEmployeeId);
-
-            @SuppressWarnings("unchecked")
-            List<Object[]> results = query.getResultList();
-
-            List<Map<String, Object>> groups = new ArrayList<>();
-            for (Object[] row : results) {
-                Map<String, Object> group = new HashMap<>();
-                group.put("id", (String) row[0]);
-                group.put("name", (String) row[1]);
-                group.put("description", (String) row[2]);
-                group.put("permissionLevel", ((Number) row[3]).intValue());
-
-                // FIX: Gérer le type Boolean correctement
-                Object activeValue = row[4];
-                boolean isActive;
-                if (activeValue instanceof Boolean) {
-                    isActive = (Boolean) activeValue;
-                } else if (activeValue instanceof Number) {
-                    isActive = ((Number) activeValue).intValue() == 1;
-                } else {
-                    isActive = true; // valeur par défaut
-                }
-                group.put("active", isActive);
-
-                group.put("creationDate", row[5]);
-                group.put("modificationDate", row[6]);
-                groups.add(group);
-            }
+            // ✅ Utiliser parseIdToUuid au lieu de UUID.fromString
+            UUID empId = parseIdToUuid(employeeId);
+            List<Group> groups = groupService.getGroupsForEmployee(empId);
+            List<GroupDto.GroupInfo> groupDtos = groupMapper.toGroupInfoList(groups);
 
             Map<String, Object> response = new HashMap<>();
-            response.put("groups", groups);
+            response.put("groups", groupDtos);
             response.put("employeeId", employeeId);
-            response.put("totalGroups", groups.size());
+            response.put("totalGroups", groupDtos.size());
 
-            log.info("✅ Found {} groups for employee: {}", groups.size(), employeeId);
+            log.debug("✅ Found {} groups for employee: {}", groupDtos.size(), employeeId);
             return ResponseEntity.ok(response);
 
+        } catch (IllegalArgumentException e) {
+            log.warn("⚠️ Invalid employee ID: {}", employeeId);
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Invalid employee ID format: " + e.getMessage()));
         } catch (Exception e) {
             log.error("❌ Error getting groups for employee: {}", employeeId, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -454,8 +411,9 @@ public class EnhancedGroupController {
         }
     }
 
+
     /**
-     * 🔗 ASSIGN EMPLOYEE TO GROUP
+     * 🔗 ASSIGN EMPLOYEE TO GROUP - CORRIGÉ
      * Endpoint: POST /api/v2/groups/{groupId}/employees/{employeeId}
      */
     @PostMapping("/{groupId}/employees/{employeeId}")
@@ -466,8 +424,9 @@ public class EnhancedGroupController {
         try {
             log.info("🔗 Assigning employee {} to group {}", employeeId, groupId);
 
-            UUID empId = UUID.fromString(employeeId);
-            UUID grpId = UUID.fromString(groupId);
+            // ✅ Utiliser parseIdToUuid au lieu de UUID.fromString
+            UUID empId = parseIdToUuid(employeeId);
+            UUID grpId = parseIdToUuid(groupId);
 
             groupService.assignEmployeeToGroup(empId, grpId);
 
@@ -492,7 +451,7 @@ public class EnhancedGroupController {
     }
 
     /**
-     * ✂️ REMOVE EMPLOYEE FROM GROUP
+     * ✂️ REMOVE EMPLOYEE FROM GROUP - CORRIGÉ
      * Endpoint: DELETE /api/v2/groups/{groupId}/employees/{employeeId}
      */
     @DeleteMapping("/{groupId}/employees/{employeeId}")
@@ -503,8 +462,9 @@ public class EnhancedGroupController {
         try {
             log.info("✂️ Removing employee {} from group {}", employeeId, groupId);
 
-            UUID empId = UUID.fromString(employeeId);
-            UUID grpId = UUID.fromString(groupId);
+            // ✅ Utiliser parseIdToUuid au lieu de UUID.fromString
+            UUID empId = parseIdToUuid(employeeId);
+            UUID grpId = parseIdToUuid(groupId);
 
             groupService.removeEmployeeFromGroup(empId, grpId);
 
@@ -863,5 +823,131 @@ public class EnhancedGroupController {
             throw new IllegalArgumentException("Invalid ID: " + idString, e);
         }
     }
+
+
+    /**
+     * Convertit un String ID (hex ou UUID) vers UUID standard
+     */
+    private UUID parseIdToUuid(String idString) {
+        if (idString == null || idString.trim().isEmpty()) {
+            throw new IllegalArgumentException("ID cannot be null or empty");
+        }
+
+        idString = idString.trim();
+
+        try {
+            // Format UUID avec tirets (36 caractères) - déjà correct
+            if (idString.length() == 36 && idString.contains("-")) {
+                return UUID.fromString(idString);
+            }
+
+            // Format Hex sans tirets (32 caractères) - conversion nécessaire
+            if (idString.length() == 32 && idString.matches("[0-9A-Fa-f]+")) {
+                // Convertir hex vers UUID format standard
+                String formatted = idString.toLowerCase()
+                        .replaceAll("(.{8})(.{4})(.{4})(.{4})(.{12})", "$1-$2-$3-$4-$5");
+                log.debug("🔄 Converting hex ID {} to UUID {}", idString, formatted);
+                return UUID.fromString(formatted);
+            }
+
+            // Format ULID (26 caractères) - si applicable
+            if (idString.length() == 26 && idString.matches("[0-9A-Z]+")) {
+                try {
+                    Ulid ulid = Ulid.from(idString);
+                    UUID uuid = ulid.toUuid();
+                    log.debug("🔄 Converting ULID {} to UUID {}", idString, uuid);
+                    return uuid;
+                } catch (Exception e) {
+                    log.warn("Failed to parse as ULID: {}", idString);
+                }
+            }
+
+            throw new IllegalArgumentException("Invalid ID format: " + idString + " (length: " + idString.length() + ")");
+
+        } catch (Exception e) {
+            log.error("❌ Error parsing ID: {} - {}", idString, e.getMessage());
+            throw new IllegalArgumentException("Invalid ID: " + idString, e);
+        }
+    }
+
+    /**
+     * 🔍 GET GROUP BY ID - CORRIGÉ
+     * Endpoint: GET /api/v2/groups/{id}
+     */
+    @GetMapping("/{id}")
+    @Operation(summary = "Get group by ID", description = "Retrieve a specific group by its ID with employee details")
+    @ApiResponse(responseCode = "200", description = "Group found")
+    @ApiResponse(responseCode = "404", description = "Group not found")
+    public ResponseEntity<Map<String, Object>> getGroupById(
+            @PathVariable String id,
+            @Parameter(description = "Include employee details") @RequestParam(defaultValue = "true") boolean includeEmployees) {
+        try {
+            log.info("🔍 Getting group by ID: {} (includeEmployees: {})", id, includeEmployees);
+
+            // ✅ Utiliser parseIdToUuid pour supporter les IDs hexadécimaux
+            UUID groupId = parseIdToUuid(id);
+            Optional<Group> groupOpt = groupService.findById(groupId);
+
+            if (groupOpt.isEmpty()) {
+                log.warn("⚠️ Group not found: {}", id);
+                return ResponseEntity.notFound().build();
+            }
+
+            Group group = groupOpt.get();
+            Map<String, Object> response = new HashMap<>();
+
+            // Basic group info
+            response.put("id", group.getUlidString() != null ? group.getUlidString() : group.getId().toString());
+            response.put("name", group.getName());
+            response.put("description", group.getDescription());
+            response.put("permissionLevel", group.getPermissionLevel());
+            response.put("active", group.getActive());
+            response.put("creationDate", group.getCreationDate());
+            response.put("modificationDate", group.getModificationDate());
+
+            if (includeEmployees) {
+                // ✅ Charger et inclure les employés du groupe
+                List<Employee> employees = groupService.getEmployeesInGroup(groupId);
+
+                // Convertir en format attendu par le frontend
+                List<Map<String, Object>> employeeList = employees.stream()
+                        .map(emp -> {
+                            Map<String, Object> empMap = new HashMap<>();
+                            empMap.put("id", emp.getUlidString() != null ? emp.getUlidString() : emp.getId().toString());
+                            empMap.put("firstName", emp.getFirstName());
+                            empMap.put("lastName", emp.getLastName());
+                            empMap.put("fullName", emp.getFullName());
+                            empMap.put("email", emp.getEmail());
+                            empMap.put("active", emp.getActive());
+                            empMap.put("workHoursPerDay", emp.getWorkHoursPerDay());
+                            empMap.put("efficiencyRating", emp.getEfficiencyRating());
+                            return empMap;
+                        })
+                        .toList();
+
+                response.put("employees", employeeList);
+                response.put("employeeCount", employeeList.size());
+
+                log.debug("✅ Group {} loaded with {} employees", group.getName(), employeeList.size());
+            } else {
+                // Juste le count sans les détails
+                int employeeCount = Math.toIntExact(groupService.countActiveEmployeesInGroup(groupId));
+                response.put("employeeCount", employeeCount);
+            }
+
+            log.info("✅ Group retrieved successfully: {} (ID: {})", group.getName(), id);
+            return ResponseEntity.ok(response);
+
+        } catch (IllegalArgumentException e) {
+            log.warn("⚠️ Invalid group ID: {}", id);
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Invalid group ID format: " + e.getMessage()));
+        } catch (Exception e) {
+            log.error("❌ Error getting group by ID: {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Error retrieving group: " + e.getMessage()));
+        }
+    }
+
 
 }

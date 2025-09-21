@@ -402,60 +402,112 @@ const getGroupIcon = (level: number) => {
 }
 
 const saveChanges = async () => {
-  if (!hasChanges.value) {
-    console.log('❌ No changes to save')
-    return
-  }
+  if (!hasChanges.value) return
 
   loading.value = true
   try {
     console.log('🔄 Saving group changes for employee:', props.employee.id)
+    console.log('📋 Groups to assign:', selectedGroups.value.map(g => g.id))
 
-    const groupIds = selectedGroups.value.map(g => g.id)
-    console.log('📋 Groups to assign:', groupIds)
+    const currentIds = new Set(selectedGroups.value.map(g => g.id))
+    const originalIds = new Set(originalGroupIds.value)
 
-    const requestBody = {
-      employeeId: props.employee.id,  // ✅ MÊME PATTERN : ID direct
-      groupIds: groupIds              // ✅ MÊME PATTERN : IDs directs
+    // Groups to add
+    const groupsToAdd = selectedGroups.value.filter(g => !originalIds.has(g.id))
+    // Groups to remove
+    const groupsToRemove = originalGroupIds.value.filter(id => !currentIds.has(id))
+
+    console.log('➕ Adding to groups:', groupsToAdd.map(g => g.name))
+    console.log('➖ Removing from groups:', groupsToRemove.map(id => {
+      const group = allGroups.value.find(g => g.id === id)
+      return group ? group.name : id
+    }))
+
+    const promises = []
+
+    // Add to new groups
+    for (const group of groupsToAdd) {
+      console.log(`📤 POST ${API_BASE_URL}/api/v2/groups/${group.id}/employees/${props.employee.id}`)
+      promises.push(
+        fetch(`${API_BASE_URL}/api/v2/groups/${group.id}/employees/${props.employee.id}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        }).then(async response => {
+          if (!response.ok) {
+            const errorText = await response.text()
+            console.error(`❌ Failed to add to group ${group.name}:`, response.status, errorText)
+            throw new Error(`Failed to add to group ${group.name}: ${response.status} - ${errorText}`)
+          }
+          console.log(`✅ Successfully added to group: ${group.name}`)
+          return response.json()
+        })
+      )
     }
 
-    const url = `${API_BASE_URL}/api/v2/groups/employee/${props.employee.id}`  // ✅ ID direct
-    console.log('📤 Making request to:', url)
-    console.log('📤 Request body:', JSON.stringify(requestBody, null, 2))
+    // Remove from old groups
+    for (const groupId of groupsToRemove) {
+      const group = allGroups.value.find(g => g.id === groupId)
+      const groupName = group ? group.name : groupId
 
-    const response = await fetch(url, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
-    })
+      console.log(`📤 DELETE ${API_BASE_URL}/api/v2/groups/${groupId}/employees/${props.employee.id}`)
+      promises.push(
+        fetch(`${API_BASE_URL}/api/v2/groups/${groupId}/employees/${props.employee.id}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        }).then(async response => {
+          if (!response.ok) {
+            const errorText = await response.text()
+            console.error(`❌ Failed to remove from group ${groupName}:`, response.status, errorText)
+            throw new Error(`Failed to remove from group ${groupName}: ${response.status} - ${errorText}`)
+          }
+          console.log(`✅ Successfully removed from group: ${groupName}`)
+          return response.json()
+        })
+      )
+    }
 
-    console.log('📥 Response status:', response.status)
-
-    if (response.ok) {
-      const responseData = await response.json()
-      console.log('✅ Success response:', responseData)
-
-      originalGroupIds.value = groupIds
-      console.log('✅ Groups updated successfully')
-
+    // Execute all operations
+    console.log(`🚀 Executing ${promises.length} individual operations...`)
+    if (promises.length === 0) {
+      console.log('ℹ️ No changes to apply')
+      // Même si pas de changements, on peut fermer le modal
       emit('updated')
-      emit('close')
-    } else {
-      const errorText = await response.text()
-      console.error('❌ Failed to update groups:', response.status, errorText)
-      alert(`Failed to save changes: ${response.status} - ${errorText}`)
+      return
     }
+
+    await Promise.all(promises)
+    console.log('✅ All individual operations completed successfully!')
+
+    // ✅ Mise à jour de l'état local - CORRECT
+    originalGroupIds.value = selectedGroups.value.map(g => g.id)
+
+    console.log('🔄 Updated original groups to:', originalGroupIds.value)
+    console.log('💾 Group assignment completed successfully!')
+
+    // ✅ Émettre l'événement de mise à jour
+    emit('updated')
+
   } catch (error) {
     console.error('❌ Error saving changes:', error)
-    alert(`Error saving changes: ${error.message}`)
+
+    let errorMessage = 'Unknown error'
+    if (error instanceof Error) {
+      errorMessage = error.message
+    } else if (typeof error === 'string') {
+      errorMessage = error
+    }
+
+    alert(`Failed to save group changes: ${errorMessage}`)
   } finally {
     loading.value = false
   }
 }
-
 // ========== LIFECYCLE ==========
 onMounted(async () => {
   console.log('🚀 Modal mounted for employee:', props.employee.fullName)

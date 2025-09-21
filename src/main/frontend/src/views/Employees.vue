@@ -431,15 +431,17 @@ const loadPlanningData = async () => {
 const generateUnifiedPlanning = async () => {
   try {
     loading.value = true
-
     console.log('🔄 Generating unified planning...')
+
+    // Afficher un message de progression
+    showNotification('Generating planning, please wait...', 'info')
 
     const response = await fetch(`${API_BASE_URL}/api/planning/generate-unified`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        startDate: '2025-06-01', // t1 - commandes depuis cette date
-        planningDate: selectedDate.value, // t2 - planifier pour cette date
+        startDate: '2025-06-01',
+        planningDate: selectedDate.value,
         timePerCard: 3,
         cleanFirst: true
       })
@@ -447,39 +449,32 @@ const generateUnifiedPlanning = async () => {
 
     if (response.ok) {
       const result = await response.json()
-      console.log('Unified planning result:', result)
+      console.log('✅ Unified planning result:', result)
 
       if (result.success) {
-        employees.value = result.employeeAssignments || []
+        // Mettre à jour les données des employés
+        if (result.employeeAssignments) {
+          employees.value = result.employeeAssignments
+        }
 
         const totalAssigned = result.totalOrdersAssigned || 0
-        const totalAnalyzed = result.totalOrdersAnalyzed || 0
+        showNotification(`Planning generated! ${totalAssigned} orders assigned`, 'success')
 
-        console.log(`Unified Planning Summary:`)
-        console.log(`  Orders assigned: ${totalAssigned}`)
-        console.log(`  Orders analyzed: ${totalAnalyzed}`)
-        console.log(`  Employees: ${employees.value.length}`)
-
-        showNotification(
-          `Planning generated! ${totalAssigned} orders assigned using Global Planning algorithm`,
-          'success'
-        )
       } else {
         showNotification(result.message || 'Planning generation failed', 'error')
       }
     } else {
-      const errorText = await response.text()
-      console.error('Unified planning failed:', errorText)
-      showNotification('Failed to generate unified planning', 'error')
+      throw new Error(`HTTP ${response.status}`)
     }
 
   } catch (error) {
-    console.error('Error generating unified planning:', error)
-    showNotification('Error generating unified planning', 'error')
+    console.error('❌ Error generating unified planning:', error)
+    showNotification('Error generating unified planning. Please try again.', 'error')
   } finally {
     loading.value = false
   }
 }
+
 
 const addEmployee = async () => {
   try {
@@ -503,10 +498,66 @@ const viewEmployee = (employeeId: string) => {
   selectedEmployeeId.value = employeeId
 }
 
-const viewEmployeePlanning = (employeeId: string) => {
-  currentView.value = 'planning'
-  selectedEmployeeId.value = employeeId
+const viewEmployeePlanning = async (employeeId: string) => {
+  console.log('🔍 Viewing planning for employee:', employeeId)
+
+  try {
+    // 1. Passer à la vue planning
+    currentView.value = 'planning'
+    selectedEmployeeId.value = employeeId
+
+    // 2. Charger les plannings existants pour cet employé (sans générer)
+    await loadEmployeePlannings(employeeId)
+
+  } catch (error) {
+    console.error('❌ Error viewing employee planning:', error)
+    showNotification('Error loading employee planning', 'error')
+  }
 }
+
+const loadEmployeePlannings = async (employeeId: string) => {
+  try {
+    loading.value = true
+    console.log('📋 Loading plannings for employee:', employeeId)
+
+    // Charger les plannings existants pour cet employé
+    const response = await fetch(`${API_BASE_URL}/api/planning/employee/${employeeId}?date=${selectedDate.value}`)
+
+    if (response.ok) {
+      const data = await response.json()
+      console.log('✅ Employee plannings loaded:', data)
+
+      // Mettre à jour l'affichage avec les plannings de l'employé
+      const employee = employees.value.find(emp => emp.id === employeeId)
+      if (employee) {
+        employee.plannings = data.plannings || []
+        employee.assignedOrders = data.orders || []
+        employee.totalWorkload = data.totalMinutes || 0
+      }
+
+      showNotification(`Loaded ${data.plannings?.length || 0} plannings for employee`, 'success')
+
+    } else if (response.status === 404) {
+      // Pas de plannings trouvés - normal
+      console.log('ℹ️ No plannings found for employee:', employeeId)
+      showNotification('No plannings found for this employee. Click "Generate Planning" to create assignments.', 'info')
+
+    } else {
+      throw new Error(`HTTP ${response.status}`)
+    }
+
+  } catch (error) {
+    console.error('❌ Error loading employee plannings:', error)
+
+    // Si l'endpoint n'existe pas, afficher une explication
+    showNotification('Employee planning view - use "Generate Planning" to create assignments', 'info')
+
+  } finally {
+    loading.value = false
+  }
+}
+
+
 
 const viewEmployeeOrders = (employeeId: string) => {
   selectedEmployeeId.value = employeeId
@@ -543,6 +594,37 @@ const getWorkloadProgressColor = (workload: number) => {
   if (workload < 1.0) return 'bg-yellow-500'
   return 'bg-red-500'
 }
+
+const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+  console.log(`${type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️'} ${message}`)
+
+  // Créer une notification temporaire (optionnel)
+  if (typeof window !== 'undefined') {
+    const notification = document.createElement('div')
+    notification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 12px 20px;
+      border-radius: 8px;
+      color: white;
+      font-weight: 500;
+      z-index: 9999;
+      max-width: 400px;
+      background: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
+    `
+    notification.textContent = message
+    document.body.appendChild(notification)
+
+    // Supprimer après 3 secondes
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.parentNode.removeChild(notification)
+      }
+    }, 3000)
+  }
+}
+
 
 // ========== LIFECYCLE ==========
 onMounted(() => {
