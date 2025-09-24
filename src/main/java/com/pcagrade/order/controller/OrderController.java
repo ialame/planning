@@ -58,54 +58,95 @@ public class OrderController {
         }
     }
 
-    @GetMapping("/frontend/orders/{id}/cards")
+    /**
+     * GET /api/orders/{id}/cards - Get cards for a specific order
+     * Fixed version with proper error handling and data mapping
+     */
+    @GetMapping("/{id}/cards")
     public ResponseEntity<Map<String, Object>> getOrderCards(@PathVariable String id) {
         try {
-            System.out.println("Frontend: Retrieving cards for order: " + id);
+            System.out.println("🃏 Loading cards for order: " + id);
 
+            // Query to get individual cards for an order
             String sql = """
             SELECT 
                 HEX(cc.id) as cardId,
-                cc.barcode as barcode,
-                COALESCE(cc.type, 'Pokemon') as type,
-                cc.card_id as cardId,
+                COALESCE(cc.code_barre, cc.barcode, 'N/A') as barcode,
+                COALESCE(cc.type, 'Pokemon') as cardType,
                 COALESCE(cc.annotation, '') as annotation,
-                COALESCE(ct.name, CONCAT('Pokemon Card ', cc.barcode)) as name
+                COALESCE(ct.name, CONCAT('Pokemon Card #', COALESCE(cc.code_barre, cc.id))) as cardName,
+                COALESCE(ct.label_name, ct.name) as labelName,
+                3 as processingTime
             FROM card_certification_order cco
             INNER JOIN card_certification cc ON cco.card_certification_id = cc.id
-            LEFT JOIN card_translation ct ON cc.card_id = ct.translatable_id 
+            LEFT JOIN card_translation ct ON cc.card_id = ct.translatable_id AND ct.locale = 'fr'
             WHERE HEX(cco.order_id) = ?
+            ORDER BY COALESCE(cc.code_barre, cc.id) ASC
             """;
 
             Query query = entityManager.createNativeQuery(sql);
-            query.setParameter(1, id.replace("-", ""));
+            query.setParameter(1, id.toUpperCase().replace("-", ""));
 
             @SuppressWarnings("unchecked")
             List<Object[]> results = query.getResultList();
 
             List<Map<String, Object>> cards = new ArrayList<>();
+            int cardsWithName = 0;
+
             for (Object[] row : results) {
-                Map<String, Object> card = Map.of(
-                        "cardId", (String) row[0],
-                        "barcode", (String) row[1],
-                        "type", (String) row[2],
-                        "annotation", (String) row[4],
-                        "name", (String) row[5]
-                );
+                Map<String, Object> card = new HashMap<>();
+
+                card.put("cardId", row[0]);
+                card.put("barcode", row[1]);
+                card.put("type", row[2]);
+                card.put("annotation", row[3]);
+                card.put("name", row[4]);
+                card.put("labelName", row[5]);
+                card.put("processingTime", row[6]);
+
+                // Count cards with names (not null and not empty)
+                String cardName = (String) row[4];
+                if (cardName != null && !cardName.trim().isEmpty() &&
+                        !cardName.startsWith("Pokemon Card #")) {
+                    cardsWithName++;
+                }
+
                 cards.add(card);
             }
 
-            System.out.println("" + cards.size() + " cards found for order " + id);
-            return ResponseEntity.ok(Map.of(
-                    "orderId", id,
-                    "cards", cards,
-                    "totalCards", cards.size()
-            ));
+            // Calculate statistics
+            int totalCards = cards.size();
+            double namePercentage = totalCards > 0
+                    ? Math.round((cardsWithName / (double) totalCards) * 100)
+                    : 0;
+
+            // Response object
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("orderId", id);
+            response.put("cards", cards);
+            response.put("totalCards", totalCards);
+            response.put("cardsWithName", cardsWithName);
+            response.put("namePercentage", namePercentage);
+            response.put("estimatedDuration", totalCards * 3);
+
+            System.out.println("✅ Found " + totalCards + " cards for order " + id +
+                    " (" + cardsWithName + " with names = " + namePercentage + "%)");
+
+            return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            System.err.println("Error loading cards: " + e.getMessage());
+            System.err.println("❌ Error loading cards for order " + id + ": " + e.getMessage());
             e.printStackTrace();
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("error", e.getMessage());
+            errorResponse.put("orderId", id);
+            errorResponse.put("cards", new ArrayList<>());
+            errorResponse.put("totalCards", 0);
+
+            return ResponseEntity.status(500).body(errorResponse);
         }
     }
 
@@ -459,5 +500,124 @@ public class OrderController {
             return null;
         }
     }
+
+    // ========== Alternative endpoint pour debug ==========
+    /**
+     * GET /api/orders/{id}/cards/debug - Debug version with more detailed logging
+     */
+    @GetMapping("/{id}/cards/debug")
+    public ResponseEntity<Map<String, Object>> getOrderCardsDebug(@PathVariable String id) {
+        try {
+            System.out.println("🔍 DEBUG: Loading cards for order: " + id);
+
+            // First, check if the order exists
+            String checkOrderSql = "SELECT HEX(id), num_commande FROM `order` WHERE HEX(id) = ?";
+            Query checkQuery = entityManager.createNativeQuery(checkOrderSql);
+            checkQuery.setParameter(1, id.toUpperCase().replace("-", ""));
+
+            @SuppressWarnings("unchecked")
+            List<Object[]> orderCheck = checkQuery.getResultList();
+
+            if (orderCheck.isEmpty()) {
+                System.out.println("❌ Order not found: " + id);
+                return ResponseEntity.notFound().build();
+            }
+
+            System.out.println("✅ Order found: " + orderCheck.get(0)[1]);
+
+            // Check if there are any card associations
+            String countSql = "SELECT COUNT(*) FROM card_certification_order WHERE HEX(order_id) = ?";
+            Query countQuery = entityManager.createNativeQuery(countSql);
+            countQuery.setParameter(1, id.toUpperCase().replace("-", ""));
+            Number cardCount = (Number) countQuery.getSingleResult();
+
+            System.out.println("📊 Found " + cardCount + " card associations");
+
+            // If no cards, return empty but valid response
+            if (cardCount.intValue() == 0) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", true);
+                response.put("orderId", id);
+                response.put("cards", new ArrayList<>());
+                response.put("totalCards", 0);
+                response.put("cardsWithName", 0);
+                response.put("namePercentage", 0);
+                response.put("message", "Order exists but has no cards associated");
+                return ResponseEntity.ok(response);
+            }
+
+            // Get detailed card information
+            String sql = """
+            SELECT 
+                HEX(cc.id) as cardId,
+                COALESCE(cc.code_barre, 'NO-BARCODE') as barcode,
+                COALESCE(cc.type, 'Pokemon') as cardType,
+                COALESCE(cc.annotation, '') as annotation,
+                COALESCE(ct.name, CONCAT('Card-', HEX(cc.id))) as cardName,
+                CASE 
+                    WHEN ct.name IS NOT NULL AND ct.name != '' THEN 1 
+                    ELSE 0 
+                END as hasName
+            FROM card_certification_order cco
+            INNER JOIN card_certification cc ON cco.card_certification_id = cc.id
+            LEFT JOIN card_translation ct ON cc.card_id = ct.translatable_id AND ct.locale = 'fr'
+            WHERE HEX(cco.order_id) = ?
+            ORDER BY cc.code_barre ASC
+            """;
+
+            Query query = entityManager.createNativeQuery(sql);
+            query.setParameter(1, id.toUpperCase().replace("-", ""));
+
+            @SuppressWarnings("unchecked")
+            List<Object[]> results = query.getResultList();
+
+            List<Map<String, Object>> cards = new ArrayList<>();
+            int cardsWithName = 0;
+
+            for (Object[] row : results) {
+                Map<String, Object> card = new HashMap<>();
+                card.put("cardId", row[0]);
+                card.put("barcode", row[1]);
+                card.put("type", row[2]);
+                card.put("annotation", row[3]);
+                card.put("name", row[4]);
+
+                Number hasName = (Number) row[5];
+                if (hasName.intValue() == 1) {
+                    cardsWithName++;
+                }
+
+                cards.add(card);
+            }
+
+            double namePercentage = cards.size() > 0
+                    ? Math.round((cardsWithName / (double) cards.size()) * 100)
+                    : 0;
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("orderId", id);
+            response.put("cards", cards);
+            response.put("totalCards", cards.size());
+            response.put("cardsWithName", cardsWithName);
+            response.put("namePercentage", namePercentage);
+
+            System.out.println("✅ DEBUG: Successfully loaded " + cards.size() + " cards");
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            System.err.println("❌ DEBUG ERROR: " + e.getMessage());
+            e.printStackTrace();
+
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("error", e.getMessage());
+            errorResponse.put("debug", true);
+
+            return ResponseEntity.status(500).body(errorResponse);
+        }
+    }
+
 
 }

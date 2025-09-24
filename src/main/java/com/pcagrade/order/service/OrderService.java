@@ -552,22 +552,137 @@ public class OrderService {
     }
 
 
-    /**
-     * Get recent orders as maps (for OrderController frontend compatibility)
-     * @return list of recent orders as maps
-     */
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getRecentOrdersAsMap() {
         try {
-            log.info(" Getting recent orders as maps for frontend");
+            log.info("🔍 Getting recent orders with REAL card counts from database");
 
-            // Use the getRecentOrders() method which already works
-            return getRecentOrders();
+            // SQL qui compte les vraies cartes depuis card_certification_order
+            String sql = """
+            SELECT 
+                HEX(o.id) as id,
+                o.num_commande as orderNumber,
+                o.num_commande_client as clientOrderNumber,
+                DATE(o.date) as creationDate,
+                o.date as fullTimestamp,
+                o.status,
+                COALESCE(o.priority_string, 'MEDIUM') as priority,
+                COALESCE(o.temps_estime_minutes, 0) as estimatedTimeMinutes,
+                COALESCE(o.prix_total, 0) as totalPrice,
+                -- VRAI NOMBRE DE CARTES depuis la table de jointure
+                COALESCE(
+                    (SELECT COUNT(*) 
+                     FROM card_certification_order cco 
+                     WHERE cco.order_id = o.id), 
+                    0
+                ) as cardCount,
+                -- VRAIES CARTES AVEC NOM
+                COALESCE(
+                    (SELECT COUNT(*) 
+                     FROM card_certification_order cco 
+                     INNER JOIN card_certification cc ON cco.card_certification_id = cc.id
+                     LEFT JOIN card_translation ct ON cc.card_id = ct.translatable_id AND ct.locale = 'fr'
+                     WHERE cco.order_id = o.id 
+                     AND (ct.name IS NOT NULL AND ct.name != '' AND ct.name != 'NULL')), 
+                    0
+                ) as cardsWithName,
+                o.customer_id,
+                o.reference,
+                o.langue as language_code,
+                o.special_grades as hasSpecialGrades
+            FROM `order` o 
+            WHERE o.date >= '2025-06-01' 
+              AND o.annulee = 0
+            ORDER BY o.date DESC
+            LIMIT 100
+            """;
+
+            Query query = entityManager.createNativeQuery(sql);
+            @SuppressWarnings("unchecked")
+            List<Object[]> results = query.getResultList();
+
+            List<Map<String, Object>> orders = new ArrayList<>();
+
+            for (Object[] row : results) {
+                Map<String, Object> order = new HashMap<>();
+
+                // Basic info
+                order.put("id", row[0]);
+                order.put("orderNumber", row[1] != null ? row[1] : "ORD-" + row[0]);
+                order.put("clientOrderNumber", row[2]);
+                order.put("creationDate", row[3]);
+                order.put("fullTimestamp", row[4]);
+
+                // Status mapping
+                Number statusNum = (Number) row[5];
+                order.put("status", mapStatusToText(statusNum));
+
+                // Priority
+                String priority = (String) row[6];
+                order.put("priority", priority != null ? priority.toUpperCase() : "MEDIUM");
+
+                // Times and price
+                order.put("estimatedTimeMinutes", ((Number) row[7]).intValue());
+                order.put("totalPrice", ((Number) row[8]).doubleValue());
+
+                // VRAIES DONNÉES DE CARTES (plus de hardcoding à 25!)
+                Number cardCount = (Number) row[9];
+                Number cardsWithName = (Number) row[10];
+
+                order.put("cardCount", cardCount.intValue());
+                order.put("cardsWithName", cardsWithName.intValue());
+
+                // Calculate real percentage
+                double namePercentage = cardCount.intValue() > 0
+                        ? Math.round((cardsWithName.doubleValue() / cardCount.doubleValue()) * 100)
+                        : 0;
+                order.put("namePercentage", namePercentage);
+
+                // Recalculate estimated duration based on real card count
+                int realDuration = cardCount.intValue() * 3; // 3 minutes per card
+                order.put("estimatedDuration", realDuration);
+
+                // Additional info
+                order.put("customerId", row[11]);
+                order.put("reference", row[12]);
+                order.put("languageCode", row[13]);
+                order.put("hasSpecialGrades", row[14]);
+
+                orders.add(order);
+            }
+
+            log.info("✅ Retrieved {} orders with real card counts", orders.size());
+
+            // Debug: Log first few orders to verify
+            if (!orders.isEmpty()) {
+                Map<String, Object> firstOrder = orders.get(0);
+                log.info("📊 Sample order: {} - {} cards ({}% with names)",
+                        firstOrder.get("orderNumber"),
+                        firstOrder.get("cardCount"),
+                        firstOrder.get("namePercentage"));
+            }
+
+            return orders;
 
         } catch (Exception e) {
-            log.error(" Error in getRecentOrdersAsMap: {}", e.getMessage(), e);
+            log.error("❌ Error getting recent orders", e);
             return new ArrayList<>();
         }
+    }
+
+    // ========== Méthode helper pour mapper le status ==========
+    private String mapStatusToText(Number statusNum) {
+        if (statusNum == null) return "PENDING";
+
+        int status = statusNum.intValue();
+        return switch (status) {
+            case 0 -> "PENDING";
+            case 1 -> "SCHEDULED";
+            case 2 -> "IN_PROGRESS";
+            case 3 -> "COMPLETED";
+            case 4 -> "CANCELLED";
+            default -> "PENDING";
+        };
     }
 
     // ========== COMPATIBILITY METHODS (for migration from CommandeService) ==========
