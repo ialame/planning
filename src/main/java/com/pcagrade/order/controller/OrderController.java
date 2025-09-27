@@ -1,17 +1,27 @@
 package com.pcagrade.order.controller;
 
-import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.HashMap;
+import com.pcagrade.order.PlanningApplication;
+import com.pcagrade.order.service.OrderService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
 import java.util.List;
 import java.util.Map;
 
-import com.pcagrade.order.service.OrderService;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import com.pcagrade.order.entity.Order;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -23,20 +33,21 @@ public class OrderController {
     @Autowired
     private EntityManager entityManager;
 
+    private static final Logger log = LoggerFactory.getLogger(OrderController.class);
     /**
      * GET /api/orders - Main endpoint for orders (expected by frontend)
      */
     @GetMapping("")
-    public ResponseEntity<List<Map<String, Object>>> getAllOrdersMain() {
+    @Operation(summary = "Get recent orders", description = "Retrieve orders from June 1, 2025 with real card counts")
+    public ResponseEntity<List<Map<String, Object>>> getOrders() {
         try {
-            System.out.println("Main orders endpoint - getting recent orders");
-            List<Map<String, Object>> orders = orderService.getRecentOrdersAsMap();
-            System.out.println("" + orders.size() + " orders returned from main endpoint");
+            log.info("📦 GET /api/orders called");
+            List<Map<String, Object>> orders = orderService.getRecentOrders();
+            log.info("✅ Returning {} orders", orders.size());
             return ResponseEntity.ok(orders);
         } catch (Exception e) {
-            System.err.println("Error in main orders endpoint: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(500).body(new ArrayList<>());
+            log.error("❌ Error in GET /api/orders", e);
+            return ResponseEntity.internalServerError().build();
         }
     }
 
@@ -266,7 +277,7 @@ public class OrderController {
                                 "orderNumber", order.getOrderNumber(),
                                 "customerName", order.getCustomerName(),
                                 "orderDate", order.getOrderDate(),
-                                "status", order.getStatus().name(),
+                                "status", order.getStatusText(),
                                 "priority", order.getPriority().name(),
                                 "cardCount", order.getCardCount(),
                                 "totalPrice", order.getTotalPrice()
@@ -331,7 +342,7 @@ public class OrderController {
                 order.put("id", row[0]);
                 order.put("orderNumber", row[1]);
                 order.put("priority", row[2]);
-                order.put("status", mapStatusToText((Number) row[3]));
+                order.put("status", row[3]);
                 order.put("creationDate", row[4]);
                 order.put("fullTimestamp", row[5]);
                 order.put("estimatedTimeMinutes", row[6]);
@@ -469,21 +480,7 @@ public class OrderController {
     // UTILITY METHODS
     // ===============================================
 
-    /**
-     * Map status number to text
-     */
-    private String mapStatusToText(Number status) {
-        if (status == null) return "PENDING";
 
-        switch (status.intValue()) {
-            case 1: return "PENDING";
-            case 2: return "SCHEDULED";
-            case 3: return "IN_PROGRESS";
-            case 4: return "COMPLETED";
-            case 5: return "CANCELLED";
-            default: return "PENDING";
-        }
-    }
 
     /**
      * Calculate deadline (creation date + 7 days)
@@ -619,5 +616,25 @@ public class OrderController {
         }
     }
 
+    private String mapStatusToText(Number statusNumber) {
+        if (statusNumber == null) return "Unknown";
 
+        int status = statusNumber.intValue();
+        return switch (status) {
+            case Order.STATUS_A_RECEPTIONNER -> "A_RECEPTIONNER";
+            case Order.STATUS_COLIS_ACCEPTE -> "COLIS_ACCEPTE";
+            case Order.STATUS_A_SCANNER -> "A_SCANNER";
+            case Order.STATUS_A_OUVRIR -> "A_OUVRIR";
+            case Order.STATUS_A_NOTER -> "A_NOTER";
+            case Order.STATUS_A_CERTIFIER -> "A_CERTIFIER";
+            case Order.STATUS_A_PREPARER -> "A_PREPARER";
+            case Order.STATUS_A_DESCELLER -> "A_DESCELLER";
+            case Order.STATUS_A_VOIR -> "A_VOIR";
+            case Order.STATUS_A_DISTRIBUER -> "A_DISTRIBUER";
+            case Order.STATUS_A_ENVOYER -> "A_ENVOYER";
+            case Order.STATUS_ENVOYEE -> "ENVOYEE";
+            case Order.STATUS_RECU -> "RECU";
+            default -> "UNKNOWN";
+        };
+    }
 }

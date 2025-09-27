@@ -1,6 +1,14 @@
 // src/services/api.js - VERSION QUI FONCTIONNE AVEC VOS ENDPOINTS
 //const API_BASE_URL = 'http://146.190.204.228:8080'
 import { API_BASE_URL, API_ENDPOINTS } from '@/config/api'
+// Définir l'interface
+interface PlanningConfig {
+  startDate?: string;
+  timePerCard?: number;
+  cleanFirst?: boolean;
+  planningDate?: string;
+  [key: string]: any; // Pour permettre d'autres propriétés
+}
 class ApiService {
 
   /**
@@ -67,11 +75,11 @@ class ApiService {
    */
   async getOrders() {
     try {
-      const orders = await this.request('/api/orders')
+      const orders : Order[] = await this.request('/api/orders')
       console.log(`✅ ${orders.length} commandes récupérées`)
 
       // Mapper vers le format attendu par le frontend
-      return orders.map(order => ({
+      return orders.map(order  => ({
         id: order.id,
         orderNumber: order.orderNumber,
         reference: order.reference,
@@ -123,7 +131,8 @@ class ApiService {
   /**
    * 🚀 GÉNÉRATION DE PLANIFICATION
    */
-  async generatePlanning(config = {}) {
+  // Typer la méthode
+    async generatePlanning(config: PlanningConfig = {}) {
     try {
       const body = {
         startDate: config.startDate || '2025-06-01',
@@ -131,7 +140,6 @@ class ApiService {
         cleanFirst: config.cleanFirst || false,
         ...config
       }
-
       console.log('🚀 Génération planification avec:', body)
 
       const result = await this.request(`/api/planning/generate`, {
@@ -162,23 +170,23 @@ class ApiService {
       // Calculer des statistiques utiles
       const stats = {
         employeesCount: employees.length,
-        activeEmployees: employees.filter(e => e.active).length,
+        activeEmployees: employees.filter( (e: any) => e.active).length,
         ordersCount: orders.length,
         planningCount: planning.length,
 
         // Statistiques des commandes par priorité
         ordersByPriority: {
-          URGENT: orders.filter(o => o.priority === 'URGENT').length,
-          HIGH: orders.filter(o => o.priority === 'HIGH').length,
-          MEDIUM: orders.filter(o => o.priority === 'MEDIUM').length,
-          LOW: orders.filter(o => o.priority === 'LOW').length
+          URGENT: orders.filter((o: any) => o.priority === 'URGENT').length,
+          HIGH: orders.filter((o: any) => o.priority === 'HIGH').length,
+          MEDIUM: orders.filter((o: any) => o.priority === 'MEDIUM').length,
+          LOW: orders.filter((o: any) => o.priority === 'LOW').length
         },
 
         // Statistiques des commandes par statut
         ordersByStatus: {
-          PENDING: orders.filter(o => o.status === 1).length,
-          IN_PROGRESS: orders.filter(o => o.status === 2).length,
-          COMPLETED: orders.filter(o => o.status === 3).length
+          PENDING: orders.filter((o: any) => o.status === 1).length,
+          IN_PROGRESS: orders.filter((o: any) => o.status === 2).length,
+          COMPLETED: orders.filter((o: any) => o.status === 3).length
         },
 
         // Temps total estimé
@@ -256,7 +264,7 @@ class ApiService {
   // Obtenir les employés actifs avec leur charge
   async getActiveEmployeesWithLoad() {
     try {
-      const employees = await this.getEmployees()
+      const employees: Employee[] = await this.getEmployees()
       const activeEmployees = employees.filter(emp => emp.active && emp.available)
 
       console.log(`👥 ${activeEmployees.length} employés actifs`)

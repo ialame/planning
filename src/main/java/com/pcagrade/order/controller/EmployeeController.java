@@ -324,7 +324,7 @@ public class EmployeeController {
                         active,
                         efficiency_rating
                     FROM j_employee 
-                    LIMIT 3
+
                 """;
 
                 Query querySample = entityManager.createNativeQuery(sqlSample);

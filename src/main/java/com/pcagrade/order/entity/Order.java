@@ -24,6 +24,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.Immutable;
 
 /**
  * Order entity representing Pokemon card orders
@@ -31,6 +32,7 @@ import lombok.NoArgsConstructor;
  */
 @Entity
 @Table(name = "`order`")
+@Immutable  // ✅ Indique que l'entité ne doit jamais être modifiée
 @Data
 @EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
@@ -38,12 +40,14 @@ import lombok.NoArgsConstructor;
 @Builder
 public class Order extends AbstractUlidEntity {
 
+
+
     /**
      * Unique order number for tracking
      */
     @NotBlank(message = "Order number is required")
     @Size(max = 50, message = "Order number must not exceed 50 characters")
-    @Column(name = "order_number", nullable = false, unique = true, length = 50)
+    @Column(name = "order_number", insertable = false, updatable = false)
     private String orderNumber;
 
     /**
@@ -53,7 +57,7 @@ public class Order extends AbstractUlidEntity {
     @Positive(message = "Card count must be positive")
     @Min(value = 1, message = "Minimum 1 card per order")
     @Max(value = 10000, message = "Maximum 10000 cards per order")
-    @Column(name = "card_count", nullable = false)
+    @Column(name = "card_count", insertable = false, updatable = false)
     private Integer cardCount;
 
     /**
@@ -89,11 +93,23 @@ public class Order extends AbstractUlidEntity {
     /**
      * Order status
      */
-    @NotNull(message = "Status is required")
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
-    @Builder.Default
-    private OrderStatus status = OrderStatus.PENDING;
+    // Constantes de statut
+    public static final int STATUS_A_RECEPTIONNER = 1;
+    public static final int STATUS_COLIS_ACCEPTE = 9;
+    public static final int STATUS_A_SCANNER = 10;
+    public static final int STATUS_A_OUVRIR = 11;
+    public static final int STATUS_A_NOTER = 2;
+    public static final int STATUS_A_CERTIFIER = 3;
+    public static final int STATUS_A_PREPARER = 4;
+    public static final int STATUS_A_DESCELLER = 7;
+    public static final int STATUS_A_VOIR = 6;
+    public static final int STATUS_A_DISTRIBUER = 41;
+    public static final int STATUS_A_ENVOYER = 42;
+    public static final int STATUS_ENVOYEE = 5;
+    public static final int STATUS_RECU = 8;
+
+    @Column(name = "status")
+    private Integer status;
 
     /**
      * Date when the order was placed
@@ -154,16 +170,6 @@ public class Order extends AbstractUlidEntity {
         CLASSIC    // 8 weeks - price < 100€
     }
 
-    /**
-     * Order status enumeration
-     */
-    public enum OrderStatus {
-        PENDING,      // Waiting to be processed
-        SCHEDULED,    // Scheduled for processing
-        IN_PROGRESS,  // Currently being processed
-        COMPLETED,    // Processing completed
-        CANCELLED     // Order cancelled
-    }
 
     // ========== LIFECYCLE HOOKS ==========
 
@@ -213,60 +219,12 @@ public class Order extends AbstractUlidEntity {
         }
     }
 
-    /**
-     * Check if order is overdue
-     */
-    public boolean isOverdue() {
-        return deadlineDate != null
-                && deadlineDate.isBefore(LocalDateTime.now())
-                && status != OrderStatus.COMPLETED
-                && status != OrderStatus.CANCELLED;
-    }
 
     /**
      * Check if order is high priority
      */
     public boolean isHighPriority() {
         return priority == OrderPriority.FAST_PLUS;
-    }
-
-    /**
-     * Check if order is ready for processing
-     */
-    public boolean isReadyForProcessing() {
-        return status == OrderStatus.PENDING || status == OrderStatus.SCHEDULED;
-    }
-
-    /**
-     * Check if order is in progress
-     */
-    public boolean isInProgress() {
-        return status == OrderStatus.IN_PROGRESS;
-    }
-
-    /**
-     * Check if order is completed
-     */
-    public boolean isCompleted() {
-        return status == OrderStatus.COMPLETED;
-    }
-
-    /**
-     * Mark order as started
-     */
-    public void markAsStarted() {
-        this.status = OrderStatus.IN_PROGRESS;
-        this.processingStartDate = LocalDateTime.now();
-        this.modificationDate = LocalDateTime.now();
-    }
-
-    /**
-     * Mark order as completed
-     */
-    public void markAsCompleted() {
-        this.status = OrderStatus.COMPLETED;
-        this.processingEndDate = LocalDateTime.now();
-        this.modificationDate = LocalDateTime.now();
     }
 
 
@@ -279,20 +237,6 @@ public class Order extends AbstractUlidEntity {
             case FAST_PLUS -> "Priorité Fast+";
             case FAST -> "Priorité Fast";
             case CLASSIC -> "Priorité Classique";
-        };
-    }
-
-
-    /**
-     * Get formatted status display
-     */
-    public String getStatusDisplay() {
-        return switch (status) {
-            case PENDING -> "En attente";
-            case SCHEDULED -> "Planifiée";
-            case IN_PROGRESS -> "En cours";
-            case COMPLETED -> "Terminée";
-            case CANCELLED -> "Annulée";
         };
     }
 
@@ -316,14 +260,39 @@ public class Order extends AbstractUlidEntity {
         return null;
     }
 
-    /**
-     * Check if processing is delayed
-     */
-    public boolean isProcessingDelayed() {
-        if (processingStartDate != null && estimatedTimeMinutes != null && status == OrderStatus.IN_PROGRESS) {
-            LocalDateTime estimatedEnd = processingStartDate.plusMinutes(estimatedTimeMinutes);
-            return LocalDateTime.now().isAfter(estimatedEnd);
-        }
-        return false;
+
+    // Helper methods pour lisibilité
+    public String getStatusText() {
+        return switch (this.status) {
+            case STATUS_A_RECEPTIONNER -> "To be received";
+            case STATUS_COLIS_ACCEPTE -> "Package accepted";
+            case STATUS_A_SCANNER -> "To be scanned";
+            case STATUS_A_OUVRIR -> "To be opened";
+            case STATUS_A_NOTER -> "To be evaluated";
+            case STATUS_A_CERTIFIER -> "To be encapsulated";
+            case STATUS_A_PREPARER -> "To be prepared";
+            case STATUS_A_DESCELLER -> "To be unsealed";
+            case STATUS_A_VOIR -> "To be seen";
+            case STATUS_A_DISTRIBUER -> "To be delivered";
+            case STATUS_A_ENVOYER -> "To be sent";
+            case STATUS_ENVOYEE -> "Sent";
+            case STATUS_RECU -> "Received";
+            default -> "Unknown";
+        };
     }
+
+    public boolean canBeAssigned() {
+        return this.status != null &&
+                this.status != STATUS_ENVOYEE &&
+                this.status != STATUS_RECU;
+    }
+
+    public void markAsScheduled() {
+        this.status = STATUS_A_PREPARER; // Ou le statut approprié
+    }
+
+    public void markAsCompleted() {
+        this.status = STATUS_ENVOYEE;
+    }
+
 }

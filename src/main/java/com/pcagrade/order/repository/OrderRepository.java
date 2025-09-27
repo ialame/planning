@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -31,36 +32,42 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
      * @param status the status enum to filter by
      * @return list of orders with specified status
      */
-    List<Order> findByStatus(Order.OrderStatus status);
+    List<Order> findByStatus(Integer status);
+
+
+    List<Order> findByStatusNotIn(Collection<Integer> statuses);
+
+    List<Order> findByStatusAndOrderDateAfter(Integer status, LocalDateTime date);
+
+    List<Order> findByStatusIn(Collection<Integer> statuses);
 
     /**
-     * Find orders by status (legacy support with ordinal)
-     * @param statusOrdinal the status ordinal to filter by
+     * Find orders by status
+     * @param status the status integer to filter by
      * @return list of orders with specified status
      */
     @Query("SELECT o FROM Order o WHERE o.status = :status")
-    List<Order> findOrdersByStatus(@Param("status") Order.OrderStatus status);
+    List<Order> findOrdersByStatus(@Param("status") Integer status);
 
     /**
-     * Find unassigned orders (status = PENDING)
-     * @param status the status enum (typically PENDING)
+     * Find unassigned orders (status = 1 for A_RECEPTIONNER)
+     * @param status the status integer (typically 1)
      * @return list of unassigned orders
      */
     @Query("SELECT o FROM Order o WHERE o.status = :status")
-    List<Order> findUnassignedOrders(@Param("status") Order.OrderStatus status);
-
+    List<Order> findUnassignedOrders(@Param("status") Integer status);
     /**
      * Count orders by status (using enum)
      * @param status the status to count
      * @return number of orders with this status
      */
-    long countByStatus(Order.OrderStatus status);
+    long countByStatus(Integer status);
 
     /**
-     * Find orders that need processing (status PENDING or IN_PROGRESS)
+     * Find orders that need processing (excluding sent and received)
      * @return list of orders to be processed, ordered by priority and date
      */
-    @Query("SELECT o FROM Order o WHERE o.status IN ('PENDING', 'IN_PROGRESS') ORDER BY o.priority DESC, o.orderDate ASC")
+    @Query("SELECT o FROM Order o WHERE o.status NOT IN (5, 8) ORDER BY o.priority DESC, o.orderDate ASC")
     List<Order> findOrdersToProcess();
 
     /**

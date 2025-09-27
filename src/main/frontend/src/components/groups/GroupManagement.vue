@@ -259,7 +259,7 @@ import CreateGroupModal from './CreateGroupModal.vue'
 import GroupDetailModal from './GroupDetailModal.vue'
 import EmployeeAssignmentModal from './EmployeeAssignmentModal.vue'
 
-const API_BASE_URL = 'http://localhost:8080'
+import { API_BASE_URL } from '@/config/api.ts'
 
 // ========== INTERFACES ==========
 interface Group {

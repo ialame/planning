@@ -428,64 +428,75 @@ public class PlanningController {
     }
 
     /**
-     * 👥 GET EMPLOYEE PLANNINGS - Plannings d'un employé spécifique
-     * GET EMPLOYEE PLANNINGS - Compatible with unified algorithm
+     * 📋 GET EMPLOYEE PLANNING - Fixed SQL spacing error
      */
     @GetMapping("/employee/{employeeId}")
-    public ResponseEntity<Map<String, Object>> getEmployeePlannings(
+    public ResponseEntity<Map<String, Object>> getEmployeePlanning(
             @PathVariable String employeeId,
             @RequestParam(required = false) String date) {
 
         try {
-            log.info("Loading plannings for employee: {}, date: {}", employeeId, date);
+            log.info("📋 Getting planning for employee: {} on date: {}", employeeId, date);
 
-            String cleanEmployeeId = employeeId.replace("-", "");
-
+            // ✅ FIXED: Proper spacing and line breaks in SQL
             String sql = """
             SELECT 
                 HEX(p.id) as planningId,
                 HEX(p.order_id) as orderId,
-                o.num_commande as orderNumber,
-                DATE(p.planning_date) as planningDate,
-                TIME(p.start_time) as startTime,
-                p.estimated_duration_minutes as durationMinutes,
+                p.start_time,
+                p.end_time,
+                p.estimated_duration_minutes as duration,
                 p.priority,
                 p.status,
-                p.estimated_card_count as cardCount,
-                p.notes
+                p.notes,
+                p.planning_date,
+                -- ORDER INFO WITH REAL CARD COUNT
+                o.num_commande as orderNumber,
+                o.num_commande_client as clientOrderNumber,
+                o.date as orderDate,
+                o.status as orderStatus,
+                -- ✅ REAL CARD COUNT from card_certification_order table
+                COALESCE(
+                    (SELECT COUNT(*)
+                     FROM card_certification_order cco
+                     WHERE cco.order_id = o.id),
+                    0
+                ) as cardCount,
+                -- ✅ CARDS WITH NAMES
+                COALESCE(
+                    (SELECT COUNT(*)
+                     FROM card_certification_order cco
+                     INNER JOIN card_certification cc ON cco.card_certification_id = cc.id
+                     LEFT JOIN card_translation ct ON cc.card_id = ct.translatable_id AND ct.locale = 'fr'
+                     WHERE cco.order_id = o.id
+                     AND (ct.name IS NOT NULL AND ct.name != '' AND ct.name != 'NULL')),
+                    0
+                ) as cardsWithName
             FROM j_planning p
-            LEFT JOIN `order` o ON p.order_id = o.id  
+            INNER JOIN `order` o ON p.order_id = o.id
             WHERE HEX(p.employee_id) = ?
-            ORDER BY p.planning_date DESC, p.start_time ASC
             """;
 
+            // ✅ FIXED: Add date filter with proper spacing
+            if (date != null) {
+                sql += " AND DATE(p.planning_date) = ? ";
+            }
+
+            // ✅ FIXED: Add ORDER BY with proper spacing
+            sql += " ORDER BY p.start_time ASC";
+
+            log.info("🔍 Executing query for employeeId: {}, date: {}", employeeId, date);
+
             Query query = entityManager.createNativeQuery(sql);
-            query.setParameter(1, cleanEmployeeId.toUpperCase());
+            query.setParameter(1, employeeId.toUpperCase());
+            if (date != null) {
+                query.setParameter(2, LocalDate.parse(date));
+            }
 
             @SuppressWarnings("unchecked")
             List<Object[]> results = query.getResultList();
 
-            log.info("Found {} total plannings for employee {}", results.size(), employeeId);
-            if (!results.isEmpty()) {
-                log.info("Planning dates for this employee: {}",
-                        results.stream().map(r -> r[3]).distinct().collect(Collectors.toList()));
-            }
-
-            // Apply date filter only if specified
-            if (date != null && !date.isEmpty()) {
-                results = results.stream()
-                        .filter(row -> date.equals(row[3].toString()))
-                        .collect(Collectors.toList());
-                log.info("After date filter ({}): {} plannings", date, results.size());
-            }
-
-            // If no results with date filter, show all plannings
-            if (results.isEmpty() && date != null) {
-                log.warn("No plannings found for date {}, showing all plannings for employee", date);
-                query = entityManager.createNativeQuery(sql);
-                query.setParameter(1, cleanEmployeeId.toUpperCase());
-                results = query.getResultList();
-            }
+            log.info("📋 Query returned {} results", results.size());
 
             List<Map<String, Object>> orders = new ArrayList<>();
             int totalCards = 0;
@@ -493,57 +504,45 @@ public class PlanningController {
 
             for (Object[] row : results) {
                 Map<String, Object> order = new HashMap<>();
+                int i = 0;
 
-                order.put("planningId", row[0] != null ? row[0].toString() : "");
-                order.put("orderId", row[1] != null ? row[1].toString() : "");
-                order.put("orderNumber", row[2] != null ? row[2].toString() : "Unknown Order");
-                order.put("planningDate", row[3] != null ? row[3].toString() : "");
-                order.put("startTime", row[4] != null ? row[4].toString() : "09:00");
+                order.put("planningId", row[i++]);
+                order.put("orderId", row[i++]);
+                order.put("startTime", row[i++]);
+                order.put("endTime", row[i++]);
 
-                // Safe conversion for numeric fields
-                Integer duration = 60; // default
-                if (row[5] != null) {
-                    if (row[5] instanceof Number) {
-                        duration = ((Number) row[5]).intValue();
-                    } else {
-                        try {
-                            duration = Integer.parseInt(row[5].toString());
-                        } catch (NumberFormatException e) {
-                            log.warn("Could not parse duration: {}", row[5]);
-                        }
-                    }
-                }
+                // Duration
+                Number durationNum = (Number) row[i++];
+                int duration = durationNum != null ? durationNum.intValue() : 0;
+                order.put("duration", duration);
                 order.put("durationMinutes", duration);
                 order.put("estimatedDuration", duration);
 
-                order.put("priority", row[6] != null ? row[6].toString() : "MEDIUM");
-                order.put("status", row[7] != null ? row[7].toString() : "SCHEDULED");
+                order.put("priority", row[i++]);
+                order.put("status", row[i++]);
+                order.put("notes", row[i++]);
+                order.put("planningDate", row[i++]);
+                order.put("orderNumber", row[i++]);
+                order.put("clientOrderNumber", row[i++]);
+                order.put("orderDate", row[i++]);
+                order.put("orderStatus", row[i++]);
 
-                // Safe conversion for card count
-                Integer cardCount = 10; // default
-                if (row[8] != null) {
-                    if (row[8] instanceof Number) {
-                        cardCount = ((Number) row[8]).intValue();
-                    } else {
-                        try {
-                            cardCount = Integer.parseInt(row[8].toString());
-                        } catch (NumberFormatException e) {
-                            log.warn("Could not parse card count: {}", row[8]);
-                        }
-                    }
-                }
+                // ✅ REAL CARD COUNT
+                Number cardCountNum = (Number) row[i++];
+                int cardCount = cardCountNum != null ? cardCountNum.intValue() : 0;
                 order.put("cardCount", cardCount);
 
-                order.put("notes", row[9] != null ? row[9].toString() : "");
+                Number cardsWithNameNum = (Number) row[i++];
+                int cardsWithName = cardsWithNameNum != null ? cardsWithNameNum.intValue() : 0;
+                order.put("cardsWithName", cardsWithName);
 
-                // Add compatibility fields
-                order.put("id", row[1] != null ? row[1].toString() : "");
+                // Compatibility fields for frontend
+                order.put("id", order.get("orderId"));
                 order.put("showCards", false);
                 order.put("loadingCards", false);
                 order.put("cards", new ArrayList<>());
 
                 orders.add(order);
-
                 totalCards += cardCount;
                 totalDuration += duration;
             }
@@ -558,11 +557,11 @@ public class PlanningController {
                     "estimatedHours", Math.round(totalDuration / 60.0 * 100.0) / 100.0
             ));
 
-            log.info("Returning {} orders for employee {}", orders.size(), employeeId);
+            log.info("✅ Returning {} orders for employee {} (Total cards: {})", orders.size(), employeeId, totalCards);
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            log.error("Error loading employee plannings: {}", e.getMessage(), e);
+            log.error("❌ Error loading employee plannings: {}", e.getMessage(), e);
 
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("success", false);
@@ -572,6 +571,7 @@ public class PlanningController {
             return ResponseEntity.ok(errorResponse);
         }
     }
+
     /**
      * 📊 GET EMPLOYEES WITH PLANNING DATA - Employés avec leurs statistiques
      */
@@ -858,7 +858,7 @@ public class PlanningController {
                       AND o.annulee = 0
                       AND o.paused = 0
                     ORDER BY o.date ASC
-                    LIMIT 50
+                    LIMIT 1000
             """;
 
             Query orderQ = entityManager.createNativeQuery(orderQuery);
@@ -972,88 +972,84 @@ public class PlanningController {
     }
 
     /**
-     * 👥 GENERATE UNIFIED PLANNING - Uses same algorithm as Global Planning
-     */
-    /**
-     * 👥 GENERATE UNIFIED PLANNING - Uses same algorithm as Global Planning
+     * 👥 GENERATE UNIFIED PLANNING - Complete method with return statement
      */
     @PostMapping("/generate-unified")
     @Transactional
     public ResponseEntity<Map<String, Object>> generateUnifiedPlanning(@RequestBody Map<String, Object> request) {
+
         Map<String, Object> result = new HashMap<>();
 
         try {
-            log.info("👥 UNIFIED PLANNING GENERATION - Using Global Planning Algorithm");
+            log.info("🚀 Starting unified planning generation with REAL card counts");
 
-            String startDate = (String) request.getOrDefault("startDate", "2025-06-01"); // t1
-            String planningDate = (String) request.getOrDefault("planningDate", LocalDate.now().toString()); // t2
+            // Extract parameters
+            String startDate = (String) request.getOrDefault("startDate", "2025-06-01");
+            String planningDate = (String) request.getOrDefault("planningDate", LocalDate.now().toString());
             Integer timePerCard = (Integer) request.getOrDefault("timePerCard", 3);
             Boolean cleanFirst = (Boolean) request.getOrDefault("cleanFirst", true);
 
-            log.info("👥 Config: startDate={} (t1), planningDate={} (t2), timePerCard={}, cleanFirst={}",
+            log.info("👥 Config: startDate={}, planningDate={}, timePerCard={}, cleanFirst={}",
                     startDate, planningDate, timePerCard, cleanFirst);
 
-            // Clean existing plannings for the planning date (t2)
+            // Clean existing plannings if requested
             if (cleanFirst) {
-                String deleteSql = "DELETE FROM j_planning WHERE DATE(planning_date) = ?";
-                Query deleteQ = entityManager.createNativeQuery(deleteSql);
-                deleteQ.setParameter(1, LocalDate.parse(planningDate));
-                int deleted = deleteQ.executeUpdate();
-                log.info("🗑️ Cleaned {} existing plannings for planning date {}", deleted, planningDate);
+                String deleteSql = "DELETE FROM j_planning WHERE planning_date = ?";
+                Query deleteQuery = entityManager.createNativeQuery(deleteSql);
+                deleteQuery.setParameter(1, LocalDate.parse(planningDate));
+                int deleted = deleteQuery.executeUpdate();
+                log.info("🗑️ Cleaned {} existing plannings for date: {}", deleted, planningDate);
             }
 
-            // Get active employees
+            // Get employees
             List<Map<String, Object>> employees = employeeService.getAllActiveEmployees();
             if (employees.isEmpty()) {
                 result.put("success", false);
                 result.put("message", "No active employees found");
                 return ResponseEntity.ok(result);
             }
+            log.info("✅ Found {} active employees", employees.size());
 
-            // Get orders from t1 onwards
+            // ✅ Get orders with REAL card counts (same query as OrderService)
             String orderQuery = """
-            SELECT 
+            SELECT
                 HEX(o.id) as orderId,
                 o.num_commande as orderNumber,
                 o.date as orderDate,
                 COALESCE(o.delai, 'MEDIUM') as priority,
                 COALESCE(o.status, 1) as status,
-                (SELECT COUNT(*) 
-                 FROM card_certification_order cco 
-                 WHERE cco.order_id = o.id) as cardCount
+                COALESCE(
+                    (SELECT COUNT(*)
+                     FROM card_certification_order cco
+                     WHERE cco.order_id = o.id),
+                    0
+                ) as cardCount
             FROM `order` o
-            WHERE o.date >= ?
-            ORDER BY o.date ASC, o.delai DESC
-            LIMIT 50
+                                WHERE o.status NOT IN (5, 8)  -- Exclure ENVOYEE et RECU
+                                AND o.annulee = 0
+                                AND o.paused = 0
+            ORDER BY o.date ASC
             """;
 
             Query orderQ = entityManager.createNativeQuery(orderQuery);
-            orderQ.setParameter(1, LocalDate.parse(startDate)); // t1
+            //orderQ.setParameter(1, LocalDate.parse(startDate));
             List<Object[]> orderResults = orderQ.getResultList();
 
             if (orderResults.isEmpty()) {
                 result.put("success", true);
                 result.put("message", "No orders found from date " + startDate);
                 result.put("employeeAssignments", new ArrayList<>());
+                result.put("totalOrdersAssigned", 0);
                 return ResponseEntity.ok(result);
             }
-
-            log.info("✅ Found {} orders (from {}) and {} employees", orderResults.size(), startDate, employees.size());
-
-            // SAME ALGORITHM AS GLOBAL PLANNING - Round-robin assignment
-            List<Map<String, Object>> employeeAssignments = new ArrayList<>();
-            Map<String, List<Map<String, Object>>> employeeOrdersMap = new HashMap<>();
+            log.info("✅ Found {} orders to plan", orderResults.size());
 
             // Initialize employee assignments
+            List<Map<String, Object>> employeeAssignments = new ArrayList<>();
             for (Map<String, Object> employee : employees) {
-                String employeeId = (String) employee.get("id");
-                String employeeName = employee.get("firstName") + " " + employee.get("lastName");
-
-                employeeOrdersMap.put(employeeId, new ArrayList<>());
-
                 Map<String, Object> assignment = new HashMap<>();
-                assignment.put("employeeId", employeeId);
-                assignment.put("employeeName", employeeName);
+                assignment.put("employeeId", employee.get("id"));
+                assignment.put("employeeName", employee.get("firstName") + " " + employee.get("lastName"));
                 assignment.put("firstName", employee.get("firstName"));
                 assignment.put("lastName", employee.get("lastName"));
                 assignment.put("email", employee.get("email"));
@@ -1062,13 +1058,12 @@ public class PlanningController {
                 assignment.put("totalCards", 0);
                 assignment.put("totalDuration", 0);
                 assignment.put("orderCount", 0);
-
                 employeeAssignments.add(assignment);
             }
 
             int successCount = 0;
 
-            // Round-robin assignment (SAME AS GLOBAL PLANNING)
+            // Round-robin assignment
             for (int i = 0; i < orderResults.size(); i++) {
                 try {
                     Object[] orderRow = orderResults.get(i);
@@ -1077,7 +1072,7 @@ public class PlanningController {
                     Number cardCountNumber = (Number) orderRow[5];
                     int cardCount = cardCountNumber != null ? cardCountNumber.intValue() : 10;
 
-                    // Round-robin employee selection
+                    // Select employee using round-robin
                     Map<String, Object> employee = employees.get(i % employees.size());
                     String employeeId = (String) employee.get("id");
                     String employeeName = employee.get("firstName") + " " + employee.get("lastName");
@@ -1085,16 +1080,14 @@ public class PlanningController {
                     int durationMinutes = Math.max(15, cardCount * timePerCard);
                     String planningId = UUID.randomUUID().toString().replace("-", "");
 
-                    // Insert planning for t2 (planning date), not t1
+                    // Insert planning
                     String insertSql = """
-                    INSERT INTO j_planning 
-                    (id, order_id, employee_id, planning_date, start_time, end_time, 
-                     estimated_duration_minutes, estimated_end_time, priority, status, 
-                     completed, notes, created_at, updated_at)
-                    VALUES (UNHEX(?), UNHEX(?), UNHEX(?), ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-                    """;
+                INSERT INTO j_planning 
+                (id, order_id, employee_id, planning_date, start_time, end_time, 
+                 estimated_duration_minutes, priority, status, completed, notes, created_at, updated_at)
+                VALUES (UNHEX(?), UNHEX(?), UNHEX(?), ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                """;
 
-                    // Plan for t2 (planning date), not t1 (start date)
                     LocalDateTime startDateTime = LocalDate.parse(planningDate).atTime(9, 0).plusMinutes(i * 30);
                     LocalDateTime endDateTime = startDateTime.plusMinutes(durationMinutes);
 
@@ -1102,13 +1095,13 @@ public class PlanningController {
                     insertQ.setParameter(1, planningId);
                     insertQ.setParameter(2, orderId.replace("-", ""));
                     insertQ.setParameter(3, employeeId.replace("-", ""));
-                    insertQ.setParameter(4, LocalDate.parse(planningDate)); // t2 - planning date
+                    insertQ.setParameter(4, LocalDate.parse(planningDate));
                     insertQ.setParameter(5, startDateTime);
                     insertQ.setParameter(6, endDateTime);
                     insertQ.setParameter(7, durationMinutes);
                     insertQ.setParameter(8, "MEDIUM");
                     insertQ.setParameter(9, "SCHEDULED");
-                    insertQ.setParameter(10, 0);
+                    insertQ.setParameter(10, false);
                     insertQ.setParameter(11, String.format("Order from %s planned for %s - %d cards",
                             orderRow[2], planningDate, cardCount));
 
@@ -1126,17 +1119,16 @@ public class PlanningController {
                         orderInfo.put("startTime", startDateTime.toLocalTime().toString());
                         orderInfo.put("endTime", endDateTime.toLocalTime().toString());
                         orderInfo.put("status", "SCHEDULED");
-                        orderInfo.put("planningDate", planningDate); // t2
-                        orderInfo.put("orderDate", orderRow[2]); // Original order date (from t1 period)
+                        orderInfo.put("planningDate", planningDate);
+                        orderInfo.put("orderDate", orderRow[2]);
 
-                        // Find employee assignment and update
+                        // Update employee assignment
                         for (Map<String, Object> assignment : employeeAssignments) {
                             if (employeeId.equals(assignment.get("employeeId"))) {
                                 @SuppressWarnings("unchecked")
                                 List<Map<String, Object>> orders = (List<Map<String, Object>>) assignment.get("orders");
                                 orders.add(orderInfo);
 
-                                // Update totals
                                 assignment.put("totalCards", (Integer) assignment.get("totalCards") + cardCount);
                                 assignment.put("totalDuration", (Integer) assignment.get("totalDuration") + durationMinutes);
                                 assignment.put("orderCount", orders.size());
@@ -1144,8 +1136,8 @@ public class PlanningController {
                             }
                         }
 
-                        log.info("✅ Unified Planning #{}: Order {} (from {}) -> Employee {} (planned for {})",
-                                successCount, orderNumber, orderRow[2], employeeName, planningDate);
+                        log.info("✅ Unified Planning #{}: Order {} -> Employee {} (planned for {})",
+                                successCount, orderNumber, employeeName, planningDate);
                     }
 
                 } catch (Exception orderError) {
@@ -1166,7 +1158,6 @@ public class PlanningController {
                 assignment.put("workloadPercentage", Math.round(workloadRatio * 100));
                 assignment.put("estimatedHours", Math.round(totalDuration / 60.0 * 100.0) / 100.0);
 
-                // Status based on workload
                 String status = workloadRatio >= 1.0 ? "overloaded" :
                         workloadRatio >= 0.8 ? "busy" : "available";
                 assignment.put("status", status);
@@ -1174,29 +1165,91 @@ public class PlanningController {
             }
 
             result.put("success", true);
-            result.put("message", String.format("✅ UNIFIED SUCCESS: %d orders (from %s) assigned for %s",
-                    successCount, startDate, planningDate));
+            result.put("message", String.format("✅ UNIFIED SUCCESS: %d orders assigned for %s", successCount, planningDate));
             result.put("employeeAssignments", employeeAssignments);
             result.put("totalOrdersAssigned", successCount);
             result.put("totalOrdersAnalyzed", orderResults.size());
             result.put("employeeCount", employees.size());
             result.put("algorithm", "UNIFIED_ROUND_ROBIN");
-            result.put("startDate", startDate); // t1
-            result.put("planningDate", planningDate); // t2
+            result.put("startDate", startDate);
+            result.put("planningDate", planningDate);
 
-            log.info("🎉 UNIFIED SUCCESS: {} orders (from {}) assigned to {} employees (for {})",
-                    successCount, startDate, employees.size(), planningDate);
+            log.info("🎉 UNIFIED SUCCESS: {} orders assigned to {} employees for {}",
+                    successCount, employees.size(), planningDate);
 
-            return ResponseEntity.ok(result);
+            return ResponseEntity.ok(result);  // ✅ RETURN STATEMENT
 
         } catch (Exception e) {
-            log.error("❌ Unified planning failed: {}", e.getMessage(), e);
+            log.error("❌ Error in unified planning generation", e);
 
             result.put("success", false);
             result.put("message", "Unified planning failed: " + e.getMessage());
             result.put("error", e.getClass().getSimpleName());
+            result.put("totalOrdersAssigned", 0);
 
-            return ResponseEntity.ok(result);
+            return ResponseEntity.internalServerError().body(result);  // ✅ RETURN STATEMENT
+        }
+    }
+
+    // Add this method to PlanningController.java
+
+    /**
+     * 🃏 GET ORDER CARDS - Cartes d'une commande spécifique
+     */
+    @GetMapping("/order/{orderId}/cards")
+    public ResponseEntity<Map<String, Object>> getOrderCards(@PathVariable String orderId) {
+        try {
+            log.info("🃏 Fetching cards for order: {}", orderId);
+
+            String sql = """
+            SELECT 
+                HEX(cc.id) as id,
+                cc.code_barre,
+                COALESCE(ct.name, CONCAT('Card #', cc.code_barre)) as name,
+                COALESCE(ct.label_name, CONCAT('Label #', cc.code_barre)) as label_name,
+                3 as duration,
+                COALESCE(cc.annotation, 0) as amount
+            FROM card_certification_order cco
+            INNER JOIN card_certification cc ON cco.card_certification_id = cc.id
+            LEFT JOIN card_translation ct ON cc.card_id = ct.translatable_id AND ct.locale = 'fr'
+            WHERE HEX(cco.order_id) = ?
+            ORDER BY cc.code_barre ASC
+            """;
+
+            Query query = entityManager.createNativeQuery(sql);
+            query.setParameter(1, orderId.toUpperCase());
+
+            @SuppressWarnings("unchecked")
+            List<Object[]> results = query.getResultList();
+
+            List<Map<String, Object>> cards = new ArrayList<>();
+
+            for (Object[] row : results) {
+                Map<String, Object> card = new HashMap<>();
+                card.put("id", row[0]);
+                card.put("code_barre", row[1]);
+                card.put("name", row[2]);
+                card.put("label_name", row[3]);
+                card.put("duration", row[4]);
+                card.put("amount", row[5] != null ? ((Number) row[5]).doubleValue() : 0.0);
+
+                cards.add(card);
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("cards", cards);
+            response.put("total", cards.size());
+
+            log.info("✅ Retrieved {} cards for order {}", cards.size(), orderId);
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("❌ Error fetching order cards", e);
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.internalServerError().body(errorResponse);
         }
     }
 

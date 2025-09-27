@@ -235,7 +235,6 @@ public interface EmployeeRepository extends JpaRepository<Employee, UUID> {
         WHERE e.active = 1
         GROUP BY e.id, e.first_name, e.last_name
         ORDER BY completed_tasks DESC, total_minutes_worked DESC
-        LIMIT 10
         """, nativeQuery = true)
     List<Object[]> findTopPerformers();
 }

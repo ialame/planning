@@ -124,7 +124,7 @@ import { ref, computed, onMounted } from 'vue'
 import { Shield, Users, UserMinus } from 'lucide-vue-next'
 import EmployeeGroupManagementModal from './EmployeeGroupManagementModal.vue'
 
-const API_BASE_URL = 'http://localhost:8080'
+import { API_BASE_URL } from '@/config/api.ts'
 
 // ========== INTERFACES ==========
 interface Employee {

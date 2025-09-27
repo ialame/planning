@@ -141,7 +141,7 @@
 import { ref, computed, watch } from 'vue'
 import { X, Plus, Shield } from 'lucide-vue-next'
 
-const API_BASE_URL = 'http://localhost:8080'
+import { API_BASE_URL } from '@/config/api.ts'
 
 // ========== PROPS & EMITS ==========
 interface PermissionLevelInfo {

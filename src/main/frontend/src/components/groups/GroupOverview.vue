@@ -145,7 +145,7 @@ import {
   AlertTriangle
 } from 'lucide-vue-next'
 
-const API_BASE_URL = 'http://localhost:8080'
+import { API_BASE_URL } from '@/config/api.ts'
 
 // ========== INTERFACES ==========
 interface GroupStats {

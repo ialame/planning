@@ -95,72 +95,51 @@
     <div v-if="!selectedEmployeeId">
 
       <!-- ✅ MANAGEMENT VIEW -->
-      <div v-if="currentView === 'management'" class="bg-white rounded-lg shadow-md overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-200">
-          <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-gray-900">Team Members</h2>
-            <button @click="showAddForm = !showAddForm" class="btn-primary">
-              {{ showAddForm ? 'Cancel' : '+ Add Employee' }}
+      <!-- ✅ EMPLOYEES MANAGEMENT VIEW (Normal employee cards) -->
+      <div v-if="currentView === 'management'" class="space-y-6">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-sm border p-6">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-semibold text-gray-900">👥 Employee Management</h2>
+            <button
+              @click="showAddForm = true"
+              class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            >
+              + Add Employee
             </button>
           </div>
         </div>
 
-        <!-- Add Employee Form -->
-        <div v-if="showAddForm" class="p-6 bg-gray-50 border-b">
-          <form @submit.prevent="addEmployee" class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <input
-              v-model="newEmployee.firstName"
-              placeholder="First Name"
-              class="input-field"
-              required
-            >
-            <input
-              v-model="newEmployee.lastName"
-              placeholder="Last Name"
-              class="input-field"
-              required
-            >
-            <input
-              v-model="newEmployee.email"
-              type="email"
-              placeholder="Email"
-              class="input-field"
-              required
-            >
-            <div class="flex space-x-2">
-              <button type="submit" class="btn-primary flex-1">Add</button>
-              <button type="button" @click="showAddForm = false" class="btn-secondary">Cancel</button>
-            </div>
-          </form>
-        </div>
-
-        <!-- Management Employee Grid -->
-        <div v-if="employees.length > 0" class="p-6">
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div
-              v-for="employee in employees"
-              :key="employee.id"
-              class="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow cursor-pointer"
-            >
+        <!-- Employee Cards Grid (NORMAL FORMAT) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div
+            v-for="employee in managementEmployees"
+            :key="employee.id"
+            class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow"
+          >
+            <div class="p-6">
               <!-- Employee Header -->
               <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center">
-                  <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-lg">
-                    {{ getInitials(employee) }}
+                  <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+              <span class="text-white font-bold">
+                {{ getInitials(employee) }}
+              </span>
                   </div>
                   <div class="ml-3">
-                    <h3 class="text-lg font-medium text-gray-900">{{ employee.firstName }} {{ employee.lastName }}</h3>
+                    <h3 class="text-lg font-semibold text-gray-900">{{ employee.firstName }} {{ employee.lastName }}</h3>
                     <p class="text-sm text-gray-600">{{ employee.email }}</p>
                   </div>
                 </div>
+
                 <span :class="[
-                  'px-2 py-1 text-xs rounded-full font-medium',
-                  employee.status === 'AVAILABLE' ? 'bg-green-100 text-green-800' :
-                  employee.status === 'BUSY' ? 'bg-orange-100 text-orange-800' :
-                  'bg-gray-100 text-gray-800'
-                ]">
-                  {{ employee.status || 'AVAILABLE' }}
-                </span>
+            'px-2 py-1 rounded-full text-xs font-medium',
+            employee.status === 'AVAILABLE' ? 'bg-green-100 text-green-800' :
+            employee.status === 'BUSY' ? 'bg-orange-100 text-orange-800' :
+            'bg-gray-100 text-gray-800'
+          ]">
+            {{ employee.status || 'AVAILABLE' }}
+          </span>
               </div>
 
               <!-- Employee Stats -->
@@ -175,7 +154,7 @@
                 </div>
               </div>
 
-              <!-- Actions -->
+              <!-- ✅ CORRECT ACTIONS (View Details + View Planning) -->
               <div class="flex space-x-2">
                 <button
                   @click="viewEmployee(employee.id)"
@@ -195,116 +174,74 @@
         </div>
       </div>
 
+
       <!-- ✅ PLANNING VIEW -->
-      <div v-else-if="currentView === 'planning'" class="space-y-6">
+      <!-- Planning Employee Grid (WORKLOAD FORMAT) -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div
+          v-for="employee in employeesWithWorkload"
+          :key="employee.id"
+          class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer"
+        >
+          <div class="p-6">
+            <!-- Employee Header -->
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center">
+                <div class="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+              <span class="text-white font-bold text-xl">
+                {{ getInitials(employee) }}
+              </span>
+                </div>
+                <div class="ml-4">
+                  <h3 class="text-xl font-bold text-gray-900">{{ employee.firstName }} {{ employee.lastName }}</h3>
+                  <p class="text-gray-600">{{ employee.activeOrders || 0 }} active tasks</p>
+                </div>
+              </div>
 
-        <!-- Planning Controls -->
-        <div class="bg-white rounded-lg shadow-sm border p-6">
-          <div class="flex justify-between items-center mb-4">
-            <h2 class="text-lg font-semibold text-gray-900">📅 Planning Overview</h2>
-            <input
-              v-model="selectedDate"
-              type="date"
-              class="border rounded-lg px-3 py-2"
-              @change="loadPlanningData"
-            >
-          </div>
-        </div>
-        <div class="bg-white rounded-lg shadow-sm border p-6">
-          <div class="flex justify-between items-center mb-4">
-            <h2 class="text-lg font-semibold text-gray-900">Planning Overview</h2>
-            <div class="flex space-x-3 items-center">
-              <input
-                v-model="selectedDate"
-                type="date"
-                class="border rounded-lg px-3 py-2"
-                @change="loadPlanningData"
-              >
-              <button
-                @click="generateUnifiedPlanning"
-                :disabled="loading"
-                class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-              >
-                <span v-if="loading">⏳</span>
-                <span v-else>🚀</span>
-                <span>{{ loading ? 'Generating...' : 'Generate Planning' }}</span>
-              </button>
+              <span :class="[
+            'px-3 py-1 rounded-full text-sm font-medium',
+            getWorkloadColor(employee.workload || 0)
+          ]">
+            {{ getWorkloadStatus(employee.workload || 0) }}
+          </span>
             </div>
-          </div>
 
-          <!-- Description de l'algorithme unifié -->
-          <p class="text-sm text-gray-600">
-            Using the same round-robin algorithm as Global Planning for consistent results across both pages.
-          </p>
-        </div>
-        <!-- Planning Employee Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div
-            v-for="employee in employeesWithWorkload"
-            :key="employee.id"
-            class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer"
-          >
-            <div class="p-6">
-              <!-- Employee Header -->
-              <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center">
-                  <div class="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                    <span class="text-white font-bold text-xl">
-                      {{ getInitials(employee) }}
-                    </span>
-                  </div>
-                  <div class="ml-4">
-                    <h3 class="text-xl font-bold text-gray-900">{{ employee.firstName }} {{ employee.lastName }}</h3>
-                    <p class="text-gray-600">{{ employee.activeOrders || 0 }} active tasks</p>
-                  </div>
-                </div>
-
-                <span :class="[
-                  'px-3 py-1 rounded-full text-sm font-medium',
-                  getWorkloadColor(employee.workload || 0)
-                ]">
-                  {{ getWorkloadStatus(employee.workload || 0) }}
-                </span>
+            <!-- Workload Progress -->
+            <div class="mb-4">
+              <div class="flex justify-between text-sm mb-2">
+                <span class="text-gray-600">Daily Workload</span>
+                <span class="font-medium">{{ Math.round((employee.workload || 0) * 100) }}%</span>
               </div>
-
-              <!-- Workload Progress -->
-              <div class="mb-4">
-                <div class="flex justify-between text-sm mb-2">
-                  <span class="text-gray-600">Daily Workload</span>
-                  <span class="font-medium">{{ Math.round((employee.workload || 0) * 100) }}%</span>
-                </div>
-                <div class="w-full bg-gray-200 rounded-full h-3">
-                  <div
-                    :class="[
-                      'h-3 rounded-full transition-all duration-300',
-                      getWorkloadProgressColor(employee.workload || 0)
-                    ]"
-                    :style="{ width: Math.min((employee.workload || 0) * 100, 100) + '%' }"
-                  ></div>
-                </div>
-                <div class="text-xs text-gray-500 mt-1">
-                  {{ employee.estimatedHours || 0 }}h / {{ employee.workHoursPerDay || 8 }}h
-                </div>
+              <div class="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  class="h-2 rounded-full transition-all duration-300"
+                  :class="getWorkloadBarColor(employee.workload || 0)"
+                  :style="{ width: `${Math.min((employee.workload || 0) * 100, 100)}%` }"
+                ></div>
               </div>
-
-              <!-- Action Buttons -->
-              <div class="flex space-x-2">
-                <button
-                  @click="viewEmployeeOrders(employee.id)"
-                  class="flex-1 bg-blue-50 text-blue-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors"
-                >
-                  👁️ View Orders & Cards
-                </button>
-                <button
-                  class="bg-gray-50 text-gray-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
-                >
-                  💳 {{ employee.totalCards || 0 }}
-                </button>
+              <div class="text-xs text-gray-500 mt-1">
+                {{ employee.estimatedHours || 0 }}h / {{ employee.workHoursPerDay || 8 }}h
               </div>
+            </div>
+
+            <!-- ✅ PLANNING ACTIONS -->
+            <div class="flex space-x-2">
+              <button
+                @click="viewEmployeePlanning(employee.id)"
+                class="flex-1 bg-green-50 text-green-600 px-3 py-2 rounded text-sm font-medium hover:bg-green-100"
+              >
+                👁️ View Orders & Cards
+              </button>
+              <button
+                class="px-3 py-2 bg-blue-50 text-blue-600 rounded text-sm font-medium hover:bg-blue-100"
+              >
+                💳 {{ employee.totalCards || 0 }}
+              </button>
             </div>
           </div>
         </div>
       </div>
+    </div>
 
       <!-- Empty State -->
       <div v-if="employees.length === 0 && !loading" class="bg-white rounded-lg shadow-md p-8 text-center">
@@ -326,15 +263,14 @@
     </div>
 
     <!-- ✅ EMPLOYEE DETAIL VIEW -->
-    <div v-else>
-      <EmployeeDetailPage
-        :employeeId="selectedEmployeeId"
-        :selectedDate="selectedDate"
-        :mode="currentView"
-        @back="selectedEmployeeId = null"
-        @refresh="refreshEmployees"
-      />
-    </div>
+  <div v-if="selectedEmployeeId" class="space-y-6">
+    <EmployeeDetailPage
+      :employeeId="selectedEmployeeId"
+      :selectedDate="selectedDate"
+      :mode="currentView"
+      @back="handleEmployeeBack"
+      @refresh="loadEmployees"
+    />
   </div>
 </template>
 
@@ -342,25 +278,7 @@
 import { ref, computed, onMounted } from 'vue'
 import EmployeeDetailPage from '../components/EmployeeDetailPage.vue'
 import { API_BASE_URL, API_ENDPOINTS } from '@/config/api'
-// ========== INTERFACES ==========
-interface Employee {
-  id: string
-  firstName: string
-  lastName: string
-  email: string
-  status: 'AVAILABLE' | 'BUSY' | 'OFFLINE'
-  workHoursPerDay?: number
-  workload?: number
-  activeOrders?: number
-  estimatedHours?: number
-  totalCards?: number
-}
 
-interface NewEmployee {
-  firstName: string
-  lastName: string
-  email: string
-}
 
 // ========== STATE ==========
 const currentView = ref<'management' | 'planning'>('management')
@@ -385,10 +303,20 @@ const stats = computed(() => ({
   overloaded: employees.value.filter(e => e.workload && e.workload >= 1.0).length
 }))
 
+// For management view (normal employee cards)
+const managementEmployees = computed(() => {
+  return employees.value.filter(emp => emp)  // Just return all employees normally
+})
+
+// For planning view (employees with workload data)
 const employeesWithWorkload = computed(() => {
+  if (currentView.value !== 'planning') {
+    return []  // Don't compute workload data unless in planning view
+  }
+
   return employees.value.map(emp => ({
     ...emp,
-    workload: emp.workload || Math.random() * 1.2, // Demo data
+    workload: emp.workload || Math.random() * 1.2,
     estimatedHours: emp.estimatedHours || Math.round((emp.workload || 0) * (emp.workHoursPerDay || 8)),
     totalCards: emp.totalCards || Math.floor(Math.random() * 200),
     activeOrders: emp.activeOrders || Math.floor(Math.random() * 5)
@@ -399,20 +327,37 @@ const employeesWithWorkload = computed(() => {
 const loadEmployees = async () => {
   loading.value = true
   try {
-    const response = await fetch(`${API_BASE_URL}/api/employees`,{ method: 'GET' }) // ✅ Nouveau endpoint
+    console.log('👥 Loading employees in management mode')
+
+    const response = await fetch(`${API_BASE_URL}/api/employees`, { method: 'GET' })
+
     if (response.ok) {
       const data = await response.json()
-      employees.value = data.employees || data || []
+
+      // ✅ Load employees in NORMAL format (not workload format)
+      employees.value = (data.employees || data || []).map(emp => ({
+        id: emp.id,
+        firstName: emp.firstName,
+        lastName: emp.lastName,
+        email: emp.email,
+        status: emp.status || 'AVAILABLE',
+        workHoursPerDay: emp.workHoursPerDay || 8,
+        activeOrders: emp.activeOrders || 0,
+        // Don't include workload data in management view
+      }))
+
+      console.log(`✅ Loaded ${employees.value.length} employees in management mode`)
     } else {
       console.error('Failed to load employees:', response.status)
     }
   } catch (error) {
     console.error('Error loading employees:', error)
-    // Fallback demo data si besoin
   } finally {
     loading.value = false
   }
 }
+
+
 const loadPlanningData = async () => {
   if (currentView.value === 'planning') {
     try {
@@ -494,27 +439,43 @@ const addEmployee = async () => {
   }
 }
 
-const viewEmployee = (employeeId: string) => {
-  selectedEmployeeId.value = employeeId
+const handleEmployeeBack = () => {
+  console.log('🔙 Handling back from employee detail')
+
+  // ✅ CRITICAL: Reset to management view and clear selection
+  currentView.value = 'management'  // NOT 'planning'!
+  selectedEmployeeId.value = null
+
+  // Reload employees in normal format (not workload format)
+  loadEmployees()
 }
 
+
+const viewEmployee = (employeeId: string) => {
+  console.log('👁️ Viewing employee details:', employeeId)
+  selectedEmployeeId.value = employeeId
+  // Stay in management view for detail viewing
+}
+
+
 const viewEmployeePlanning = async (employeeId: string) => {
-  console.log('🔍 Viewing planning for employee:', employeeId)
+  console.log('📋 Viewing employee planning:', employeeId)
 
   try {
-    // 1. Passer à la vue planning
+    // Set to planning mode and select employee
     currentView.value = 'planning'
     selectedEmployeeId.value = employeeId
 
-    // 2. Charger les plannings existants pour cet employé (sans générer)
+    // Load planning data if needed
     await loadEmployeePlannings(employeeId)
 
   } catch (error) {
     console.error('❌ Error viewing employee planning:', error)
-    showNotification('Error loading employee planning', 'error')
+    if (showNotification) {
+      showNotification('Error loading employee planning', 'error')
+    }
   }
 }
-
 const loadEmployeePlannings = async (employeeId: string) => {
   try {
     loading.value = true
@@ -528,7 +489,7 @@ const loadEmployeePlannings = async (employeeId: string) => {
       console.log('✅ Employee plannings loaded:', data)
 
       // Mettre à jour l'affichage avec les plannings de l'employé
-      const employee = employees.value.find(emp => emp.id === employeeId)
+      const employee  = employees.value.find(emp => emp.id === employeeId)
       if (employee) {
         employee.plannings = data.plannings || []
         employee.assignedOrders = data.orders || []

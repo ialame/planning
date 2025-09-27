@@ -110,7 +110,7 @@ import GroupOverview from './GroupOverview.vue'
 import EmployeesWithGroups from './EmployeesWithGroups.vue'
 import CreateGroupModal from './CreateGroupModal.vue'
 
-const API_BASE_URL = 'http://localhost:8080'
+import { API_BASE_URL } from '@/config/api.ts'
 
 // ========== INTERFACES ==========
 interface GroupStats {

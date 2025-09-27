@@ -307,31 +307,6 @@ const DEFAULT_WORK_HOURS = parseInt(import.meta.env.VITE_DEFAULT_WORK_HOURS || '
 
 console.log(`⚙️ Configuration: ${CARD_PROCESSING_TIME}min per card, ${DEFAULT_WORK_HOURS}h per day`)
 
-// ========== INTERFACES ==========
-interface Planning {
-  id: string
-  orderId: string
-  employeeId: string
-  employeeName?: string
-  orderNumber?: string
-  planningDate: string
-  startTime: string
-  endTime: string
-  durationMinutes: number
-  cardCount?: number
-  priority?: string
-  status?: string
-  completed: boolean
-  notes?: string
-}
-
-interface PlanningConfig {
-  startDate: string
-  cardProcessingTime: number
-  priorityMode: string
-  redistributeOverload: boolean
-  respectPriorities: boolean
-}
 
 // ========== STATE ==========
 const loading = ref(false)

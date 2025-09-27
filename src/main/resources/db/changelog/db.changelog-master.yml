@@ -484,3 +484,152 @@ databaseChangeLog:
       rollback:
         - sql:
             sql: DELETE FROM j_group WHERE name IN ('ADMIN', 'MANAGER', 'SUPERVISOR', 'PROCESSOR', 'VIEWER');
+
+  - changeSet:
+      id: 002-add-timestamps-to-group
+      author: pokemon-card-planning
+      changes:
+        - addColumn:
+            tableName: j_group
+            columns:
+              - column:
+                  name: created_at
+                  type: DATETIME
+                  defaultValueComputed: CURRENT_TIMESTAMP
+              - column:
+                  name: updated_at
+                  type: DATETIME
+                  defaultValueComputed: CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+
+  - changeSet:
+      id: 002-insert-default-roles
+      author: pokemon-card-planning
+      comment: Insert default roles for the application
+      changes:
+        - insert:
+            tableName: j_group
+            columns:
+              - column:
+                  name: id
+                  valueComputed: UNHEX(REPLACE(UUID(), '-', ''))
+              - column:
+                  name: name
+                  value: ROLE_SUPER_ADMIN
+              - column:
+                  name: description
+                  value: Super administrateur - Accès complet au système
+              - column:
+                  name: active
+                  value: 1
+              - column:
+                  name: permission_level
+                  value: 10
+        - insert:
+            tableName: j_group
+            columns:
+              - column:
+                  name: id
+                  valueComputed: UNHEX(REPLACE(UUID(), '-', ''))
+              - column:
+                  name: name
+                  value: ROLE_NOTEUR
+              - column:
+                  name: description
+                  value: Noteur - Attribution des notes aux cartes
+              - column:
+                  name: active
+                  value: 1
+              - column:
+                  name: permission_level
+                  value: 3
+        - insert:
+            tableName: j_group
+            columns:
+              - column:
+                  name: id
+                  valueComputed: UNHEX(REPLACE(UUID(), '-', ''))
+              - column:
+                  name: name
+                  value: ROLE_CERTIFICATEUR
+              - column:
+                  name: description
+                  value: Certificateur - certifie les cartes
+              - column:
+                  name: active
+                  value: 1
+              - column:
+                  name: permission_level
+                  value: 3
+        - insert:
+            tableName: j_group
+            columns:
+              - column:
+                  name: id
+                  valueComputed: UNHEX(REPLACE(UUID(), '-', ''))
+              - column:
+                  name: name
+                  value: ROLE_PREPARATEUR
+              - column:
+                  name: description
+                  value: prépare la commande
+              - column:
+                  name: active
+                  value: 1
+              - column:
+                  name: permission_level
+                  value: 3
+        - insert:
+            tableName: j_group
+            columns:
+              - column:
+                  name: id
+                  valueComputed: UNHEX(REPLACE(UUID(), '-', ''))
+              - column:
+                  name: name
+                  value: ROLE_DIRECTION
+              - column:
+                  name: description
+                  value: la direction
+              - column:
+                  name: active
+                  value: 1
+              - column:
+                  name: permission_level
+                  value: 7
+        - insert:
+            tableName: j_group
+            columns:
+              - column:
+                  name: id
+                  valueComputed: UNHEX(REPLACE(UUID(), '-', ''))
+              - column:
+                  name: name
+                  value: ROLE_RECEPTIONNEUR
+              - column:
+                  name: description
+                  value: la récéption des commandes
+              - column:
+                  name: active
+                  value: 1
+              - column:
+                  name: permission_level
+                  value: 3
+        - insert:
+            tableName: j_group
+            columns:
+              - column:
+                  name: id
+                  valueComputed: UNHEX(REPLACE(UUID(), '-', ''))
+              - column:
+                  name: name
+                  value: ROLE_EMPLOYE
+              - column:
+                  name: description
+                  value: l'employé
+              - column:
+                  name: active
+                  value: 1
+              - column:
+                  name: permission_level
+                  value: 2
+        # Répétez pour les autres rôles...
