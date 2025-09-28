@@ -42,6 +42,14 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     List<Order> findByStatusIn(Collection<Integer> statuses);
 
     /**
+     * Count orders by status
+     * @param status the status integer to count
+     * @return number of orders with this status
+     */
+    long countByStatus(Integer status);
+
+
+    /**
      * Find orders by status
      * @param status the status integer to filter by
      * @return list of orders with specified status
@@ -56,12 +64,6 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
      */
     @Query("SELECT o FROM Order o WHERE o.status = :status")
     List<Order> findUnassignedOrders(@Param("status") Integer status);
-    /**
-     * Count orders by status (using enum)
-     * @param status the status to count
-     * @return number of orders with this status
-     */
-    long countByStatus(Integer status);
 
     /**
      * Find orders that need processing (excluding sent and received)
@@ -94,26 +96,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     @Query("SELECT o FROM Order o WHERE o.orderDate BETWEEN :startDate AND :endDate ORDER BY o.orderDate ASC")
     List<Order> findOrdersBetweenDates(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
-    /**
-     * Find pending orders
-     * @return list of pending orders
-     */
-    @Query("SELECT o FROM Order o WHERE o.status = 'PENDING' ORDER BY o.priority DESC, o.orderDate ASC")
-    List<Order> findPendingOrders();
 
-    /**
-     * Find in progress orders
-     * @return list of in progress orders
-     */
-    @Query("SELECT o FROM Order o WHERE o.status = 'IN_PROGRESS' ORDER BY o.orderDate ASC")
-    List<Order> findInProgressOrders();
-
-    /**
-     * Find completed orders
-     * @return list of completed orders
-     */
-    @Query("SELECT o FROM Order o WHERE o.status = 'COMPLETED' ORDER BY o.orderDate DESC")
-    List<Order> findCompletedOrders();
 
     /**
      * Find orders by card count range
@@ -138,13 +121,6 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     @Query("SELECT AVG(o.estimatedTimeMinutes) FROM Order o WHERE o.estimatedTimeMinutes > 0")
     Double getAverageProcessingTime();
 
-    /**
-     * Find orders with deadlines approaching (within next N days)
-     * @param targetDate the date to compare against
-     * @return list of orders with approaching deadlines
-     */
-    @Query("SELECT o FROM Order o WHERE o.deadlineDate <= :targetDate AND o.status NOT IN ('COMPLETED', 'CANCELLED') ORDER BY o.deadlineDate ASC")
-    List<Order> findOrdersWithApproachingDeadlines(@Param("targetDate") LocalDateTime targetDate);
 
     /**
      * Find orders created between dates
@@ -155,49 +131,8 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     @Query("SELECT o FROM Order o WHERE o.creationDate BETWEEN :startDate AND :endDate ORDER BY o.creationDate DESC")
     List<Order> findOrdersCreatedBetween(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
-    /**
-     * Find high priority orders
-     * @return list of high priority orders
-     */
-    @Query("SELECT o FROM Order o WHERE o.priority = 'HIGH' AND o.status NOT IN ('COMPLETED', 'CANCELLED') ORDER BY o.orderDate ASC")
-    List<Order> findHighPriorityOrders();
 
-    /**
-     * Find overdue orders (deadline passed and not completed)
-     * @return list of overdue orders
-     */
-    @Query("SELECT o FROM Order o WHERE o.deadlineDate < CURRENT_TIMESTAMP AND o.status NOT IN ('COMPLETED', 'CANCELLED') ORDER BY o.deadlineDate ASC")
-    List<Order> findOverdueOrders();
 
-    /**
-     * Count orders by priority
-     * @param priority the priority to count
-     * @return number of orders with this priority
-     */
-    long countByPriority(Order.OrderPriority priority);
-
-    /**
-     * Find orders by customer name (case insensitive)
-     * @param customerName the customer name to search for
-     * @return list of orders for the customer
-     */
-    @Query("SELECT o FROM Order o WHERE LOWER(o.customerName) LIKE LOWER(CONCAT('%', :customerName, '%')) ORDER BY o.orderDate DESC")
-    List<Order> findByCustomerNameContainingIgnoreCase(@Param("customerName") String customerName);
-
-    /**
-     * Find orders created in the last N days
-     * @param days number of days to look back
-     * @return list of recent orders
-     */
-    @Query("SELECT o FROM Order o WHERE o.creationDate >= :sinceDate ORDER BY o.creationDate DESC")
-    List<Order> findRecentOrders(@Param("sinceDate") LocalDateTime sinceDate);
-
-    /**
-     * Find orders ready for scheduling (PENDING status)
-     * @return list of orders ready to be scheduled
-     */
-    @Query("SELECT o FROM Order o WHERE o.status = 'PENDING' ORDER BY o.priority DESC, o.orderDate ASC")
-    List<Order> findOrdersReadyForScheduling();
 
     /**
      * Get workload statistics (count and total estimated time by status)

@@ -1,5 +1,8 @@
 package com.pcagrade.order.controller;
 
+import java.util.stream.Collectors;
+import java.util.Map;
+import java.util.HashMap;
 import com.pcagrade.order.PlanningApplication;
 import com.pcagrade.order.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,12 +14,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.Map;
+import java.time.LocalDateTime;
+import java.util.*;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.HashMap;
+
 
 
 import jakarta.persistence.EntityManager;
@@ -34,20 +36,98 @@ public class OrderController {
     private EntityManager entityManager;
 
     private static final Logger log = LoggerFactory.getLogger(OrderController.class);
+
     /**
+     * ✅ FIXED - Main endpoint now uses correct priority mapping
      * GET /api/orders - Main endpoint for orders (expected by frontend)
      */
     @GetMapping("")
-    @Operation(summary = "Get recent orders", description = "Retrieve orders from June 1, 2025 with real card counts")
+    @Operation(summary = "Get recent orders with priority mapping", description = "Retrieve orders with correct delai->priority mapping")
     public ResponseEntity<List<Map<String, Object>>> getOrders() {
         try {
-            log.info("📦 GET /api/orders called");
-            List<Map<String, Object>> orders = orderService.getRecentOrders();
-            log.info("✅ Returning {} orders", orders.size());
+            log.info("📦 GET /api/orders called - Using CORRECTED priority mapping");
+
+            // ✅ CALL THE NEW METHOD WITH PRIORITY MAPPING
+            List<Map<String, Object>> orders = orderService.getRecentOrdersWithPriorityMapping();
+
+            // ✅ LOG SAMPLE TO VERIFY PRIORITIES
+            if (!orders.isEmpty()) {
+                Map<String, Object> firstOrder = orders.get(0);
+                log.info("📋 Sample order: {} - delai: '{}' -> priority: '{}'",
+                        firstOrder.get("orderNumber"),
+                        firstOrder.get("delai"),
+                        firstOrder.get("priority"));
+            }
+
+            // ✅ LOG PRIORITY DISTRIBUTION FOR FRONTEND
+            Map<String, Long> priorityCount = orders.stream()
+                    .collect(Collectors.groupingBy(
+                            o -> (String) o.get("priority"),
+                            Collectors.counting()
+                    ));
+            log.info("📊 FRONTEND will receive priority distribution: {}", priorityCount);
+
+            log.info("✅ Returning {} orders with correct priorities", orders.size());
             return ResponseEntity.ok(orders);
+
         } catch (Exception e) {
             log.error("❌ Error in GET /api/orders", e);
             return ResponseEntity.internalServerError().build();
+        }
+    }
+
+
+    /**
+     * 🧪 TEST ENDPOINT - Quick test to verify priority mapping
+     */
+    @GetMapping("/test-priority-mapping-simple")
+    public ResponseEntity<Map<String, Object>> testPriorityMappingSimple() {
+        try {
+            log.info("🧪 Testing simple priority mapping");
+
+            String sql = """
+        SELECT 
+            o.delai,
+            COUNT(*) as count,
+            CASE 
+                WHEN o.delai = 'X' THEN 'EXCELSIOR'
+                WHEN o.delai = 'F+' THEN 'FAST_PLUS'  
+                WHEN o.delai = 'F' THEN 'FAST'
+                WHEN o.delai IN ('C', 'E') THEN 'CLASSIC'
+                ELSE 'UNKNOWN'
+            END as mapped_priority
+        FROM `order` o 
+        WHERE o.annulee = 0
+        GROUP BY o.delai
+        ORDER BY COUNT(*) DESC
+        """;
+
+            Query query = entityManager.createNativeQuery(sql);
+            @SuppressWarnings("unchecked")
+            List<Object[]> results = query.getResultList();
+
+            Map<String, Object> response = new HashMap<>();
+            List<Map<String, Object>> mappings = new ArrayList<>();
+
+            for (Object[] row : results) {
+                Map<String, Object> mapping = new HashMap<>();
+                mapping.put("delai", row[0]);
+                mapping.put("count", ((Number) row[1]).intValue());
+                mapping.put("mappedPriority", row[2]);
+                mappings.add(mapping);
+            }
+
+            response.put("success", true);
+            response.put("mappings", mappings);
+            response.put("message", "Priority mapping test completed");
+
+            log.info("🧪 Priority mapping test results: {}", mappings);
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("❌ Priority mapping test failed", e);
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "error", e.getMessage()));
         }
     }
 
@@ -251,12 +331,32 @@ public class OrderController {
             System.out.println("Searching orders with criteria: " + searchTerm + ", " + status + ", " + priority);
 
             // Convert string parameters to enums if provided
-            Order.OrderStatus orderStatus = null;
+            Integer orderStatusCode = null;
             if (status != null && !status.isEmpty()) {
                 try {
-                    orderStatus = Order.OrderStatus.valueOf(status.toUpperCase());
-                } catch (IllegalArgumentException e) {
-                    System.err.println("Invalid status: " + status);
+                    // Try parsing as integer directly (since statuses are stored as integers)
+                    orderStatusCode = Integer.parseInt(status);
+                } catch (NumberFormatException e) {
+                    // If not a number, try mapping from string names to status codes
+                    switch (status.toUpperCase()) {
+                        case "PENDING", "TO_RECEIVE" -> orderStatusCode = Order.STATUS_A_RECEPTIONNER;
+                        case "PACKAGE_ACCEPTED" -> orderStatusCode = Order.STATUS_COLIS_ACCEPTE;
+                        case "TO_SCAN" -> orderStatusCode = Order.STATUS_A_SCANNER;
+                        case "TO_OPEN" -> orderStatusCode = Order.STATUS_A_OUVRIR;
+                        case "TO_EVALUATE" -> orderStatusCode = Order.STATUS_A_NOTER;
+                        case "TO_CERTIFY" -> orderStatusCode = Order.STATUS_A_CERTIFIER;
+                        case "TO_PREPARE" -> orderStatusCode = Order.STATUS_A_PREPARER;
+                        case "TO_UNSEAL" -> orderStatusCode = Order.STATUS_A_DESCELLER;
+                        case "TO_SEE" -> orderStatusCode = Order.STATUS_A_VOIR;
+                        case "TO_DISTRIBUTE" -> orderStatusCode = Order.STATUS_A_DISTRIBUER;
+                        case "TO_SEND" -> orderStatusCode = Order.STATUS_A_ENVOYER;
+                        case "SENT" -> orderStatusCode = Order.STATUS_ENVOYEE;
+                        case "RECEIVED" -> orderStatusCode = Order.STATUS_RECU;
+                        default -> {
+                            System.err.println("Unknown status string: " + status);
+                            orderStatusCode = null;
+                        }
+                    }
                 }
             }
 
@@ -269,7 +369,9 @@ public class OrderController {
                 }
             }
 
-            List<Order> orders = orderService.searchOrders(searchTerm, orderStatus, orderPriority);
+// Update the service call to use Integer instead of OrderStatus
+            List<Order> orders = orderService.searchOrders(searchTerm, orderStatusCode, orderPriority);
+
             List<Map<String, Object>> orderMaps = orders.stream()
                     .map(order -> {
                         Map<String, Object> orderMap = Map.of(
@@ -636,5 +738,231 @@ public class OrderController {
             case Order.STATUS_RECU -> "RECU";
             default -> "UNKNOWN";
         };
+
     }
+
+    /**
+     * 🔍 DEBUG ENDPOINT - Get priority mapping details
+     * Endpoint: GET /api/orders/debug/priorities
+     */
+    @GetMapping("/debug/priorities")
+    public ResponseEntity<Map<String, Object>> debugPriorities() {
+        try {
+            log.info("🔍 Debug: Analyzing priority mappings");
+
+            String sql = """
+        SELECT 
+            o.delai as original_delai,
+            COUNT(*) as count,
+            GROUP_CONCAT(DISTINCT o.num_commande ORDER BY o.num_commande LIMIT 5) as sample_orders
+        FROM `order` o
+        WHERE o.annulee = 0
+        GROUP BY o.delai
+        ORDER BY COUNT(*) DESC
+        """;
+
+            Query query = entityManager.createNativeQuery(sql);
+            @SuppressWarnings("unchecked")
+            List<Object[]> results = query.getResultList();
+
+            List<Map<String, Object>> delaiAnalysis = new ArrayList<>();
+
+            for (Object[] row : results) {
+                String delai = (String) row[0];
+                Integer count = ((Number) row[1]).intValue();
+                String samples = (String) row[2];
+
+                Map<String, Object> analysis = new HashMap<>();
+                analysis.put("originalDelai", delai);
+                analysis.put("mappedPriority", Order.mapDelaiToPriority(delai).name());
+                analysis.put("count", count);
+                analysis.put("sampleOrders", samples != null ? samples.split(",") : new String[0]);
+                analysis.put("isValid", Set.of("X", "F+", "F", "C", "E").contains(delai));
+
+                delaiAnalysis.add(analysis);
+            }
+
+            Map<String, Object> debugInfo = new HashMap<>();
+            debugInfo.put("delaiAnalysis", delaiAnalysis);
+            debugInfo.put("validDelaiValues", List.of("X", "F+", "F", "C", "E"));
+            debugInfo.put("priorityMapping", Map.of(
+                    "X", "EXCELSIOR",
+                    "F+", "FAST_PLUS",
+                    "F", "FAST",
+                    "C", "CLASSIC",
+                    "E", "CLASSIC"
+            ));
+            debugInfo.put("timestamp", LocalDateTime.now());
+
+            return ResponseEntity.ok(debugInfo);
+
+        } catch (Exception e) {
+            log.error("❌ Error in priority debug", e);
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+    /**
+     * 🔍 DEBUG ENDPOINT - Check actual delai values in database
+     * Endpoint: GET /api/orders/debug/delai-distribution
+     */
+    @GetMapping("/debug/delai-distribution")
+    public ResponseEntity<Map<String, Object>> debugDelaiDistribution() {
+        try {
+            log.info("🔍 Debug: Analyzing delai column distribution");
+
+            String sql = """
+        SELECT 
+            COALESCE(o.delai, 'NULL') as delai_value,
+            COUNT(*) as count,
+            ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM `order` WHERE annulee = 0), 2) as percentage,
+            GROUP_CONCAT(DISTINCT o.num_commande ORDER BY o.num_commande LIMIT 5) as sample_orders,
+            CASE
+               WHEN o.delai = 'X' THEN 'EXCELSIOR'
+               WHEN o.delai = 'F+' THEN 'FAST_PLUS'
+               WHEN o.delai = 'F' THEN 'FAST'
+               WHEN o.delai IN ('C', 'E') THEN 'CLASSIC'
+               ELSE 'UNMAPPED'
+            END as mapped_priority
+        FROM `order` o
+        WHERE o.annulee = 0
+        GROUP BY o.delai
+        ORDER BY COUNT(*) DESC
+        """;
+
+            Query query = entityManager.createNativeQuery(sql);
+            @SuppressWarnings("unchecked")
+            List<Object[]> results = query.getResultList();
+
+            List<Map<String, Object>> distribution = new ArrayList<>();
+
+            for (Object[] row : results) {
+                Map<String, Object> item = new HashMap<>();
+                item.put("delaiValue", (String) row[0]);
+                item.put("count", ((Number) row[1]).intValue());
+                item.put("percentage", ((Number) row[2]).doubleValue());
+                item.put("sampleOrders", row[3] != null ? Arrays.asList(((String) row[3]).split(",")) : new ArrayList<>());
+                item.put("mappedPriority", (String) row[4]);
+
+                distribution.add(item);
+            }
+
+            // Get total count
+            String totalSql = "SELECT COUNT(*) FROM `order` WHERE annulee = 0";
+            Query totalQuery = entityManager.createNativeQuery(totalSql);
+            Number totalCount = (Number) totalQuery.getSingleResult();
+
+            Map<String, Object> debugInfo = new HashMap<>();
+            debugInfo.put("totalOrders", totalCount.intValue());
+            debugInfo.put("delaiDistribution", distribution);
+            debugInfo.put("mapping", Map.of(
+                    "X", "EXCELSIOR",
+                    "F+", "FAST_PLUS",
+                    "F", "FAST",
+                    "C", "CLASSIC",
+                    "E", "CLASSIC"
+            ));
+            debugInfo.put("timestamp", LocalDateTime.now());
+
+            log.info("📊 Delai distribution: {} unique values found", distribution.size());
+            return ResponseEntity.ok(debugInfo);
+
+        } catch (Exception e) {
+            log.error("❌ Error in delai distribution debug", e);
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+
+    /**
+     * 🧪 TEST ENDPOINT - Verify priority mapping is working
+     * Endpoint: GET /api/orders/test/priority-mapping
+     */
+    @GetMapping("/test/priority-mapping")
+    public ResponseEntity<Map<String, Object>> testPriorityMapping() {
+        try {
+            log.info("🧪 Testing priority mapping from delai column");
+
+            // Get a sample of orders with their delai and mapped priorities
+            String sql = """
+        SELECT 
+            HEX(o.id) as id,
+            o.num_commande as orderNumber,
+            COALESCE(o.delai, 'NULL') as delai,
+            CASE
+               WHEN o.delai = 'X' THEN 'EXCELSIOR'
+               WHEN o.delai = 'F+' THEN 'FAST_PLUS'
+               WHEN o.delai = 'F' THEN 'FAST'
+               WHEN o.delai IN ('C', 'E') THEN 'CLASSIC'
+               ELSE 'UNMAPPED'
+            END as mappedPriority
+        FROM `order` o
+        WHERE o.annulee = 0
+        ORDER BY o.date DESC
+        LIMIT 20
+        """;
+
+            Query query = entityManager.createNativeQuery(sql);
+            @SuppressWarnings("unchecked")
+            List<Object[]> results = query.getResultList();
+
+            List<Map<String, Object>> samples = new ArrayList<>();
+            for (Object[] row : results) {
+                Map<String, Object> sample = new HashMap<>();
+                sample.put("id", (String) row[0]);
+                sample.put("orderNumber", (String) row[1]);
+                sample.put("delai", (String) row[2]);
+                sample.put("mappedPriority", (String) row[3]);
+                samples.add(sample);
+            }
+
+            // Get statistics
+            String statsSql = """
+        SELECT 
+            COALESCE(o.delai, 'NULL') as delai,
+            COUNT(*) as count
+        FROM `order` o
+        WHERE o.annulee = 0
+        GROUP BY o.delai
+        ORDER BY COUNT(*) DESC
+        """;
+
+            Query statsQuery = entityManager.createNativeQuery(statsSql);
+            @SuppressWarnings("unchecked")
+            List<Object[]> statsResults = statsQuery.getResultList();
+
+            Map<String, Integer> delaiStats = new HashMap<>();
+            for (Object[] row : statsResults) {
+                delaiStats.put((String) row[0], ((Number) row[1]).intValue());
+            }
+
+            Map<String, Object> testResult = new HashMap<>();
+            testResult.put("success", true);
+            testResult.put("sampleOrders", samples);
+            testResult.put("delaiStatistics", delaiStats);
+            testResult.put("mapping", Map.of(
+                    "X", "EXCELSIOR",
+                    "F+", "FAST_PLUS",
+                    "F", "FAST",
+                    "C", "CLASSIC",
+                    "E", "CLASSIC"
+            ));
+            testResult.put("message", "Priority mapping test completed");
+            testResult.put("timestamp", LocalDateTime.now());
+
+            log.info("✅ Priority mapping test completed. Found {} unique delai values", delaiStats.size());
+            return ResponseEntity.ok(testResult);
+
+        } catch (Exception e) {
+            log.error("❌ Error in priority mapping test", e);
+            return ResponseEntity.internalServerError()
+                    .body(Map.of(
+                            "success", false,
+                            "error", e.getMessage(),
+                            "message", "Priority mapping test failed"
+                    ));
+        }
+    }
+
 }

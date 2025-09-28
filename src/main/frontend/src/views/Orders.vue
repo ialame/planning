@@ -1,4 +1,5 @@
 <template>
+
   <div class="min-h-screen bg-gray-50 p-6">
     <div class="max-w-7xl mx-auto">
 
@@ -29,6 +30,12 @@
               class="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700"
             >
               🔧 Debug API
+            </button>
+            <button
+              @click="testPriorityMapping"
+              class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
+            >
+              🧪 Test Priority Mapping
             </button>
           </div>
         </div>
@@ -86,44 +93,109 @@
       </div>
 
       <!-- ✅ QUICK STATISTICS -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        <!-- To Receive -->
         <div class="bg-white p-6 rounded-lg shadow border-l-4 border-blue-500">
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm font-medium text-gray-600">Displayed Orders</p>
-              <p class="text-2xl font-bold text-blue-600">{{ statistics.total }}</p>
+              <p class="text-sm font-medium text-gray-600">To Receive</p>
+              <p class="text-2xl font-bold text-blue-600">{{ statistics.toReceive }}</p>
             </div>
             <div class="text-3xl text-blue-600">📦</div>
           </div>
         </div>
 
-        <div class="bg-white p-6 rounded-lg shadow border-l-4 border-yellow-500">
+        <!-- Package Accepted -->
+        <div class="bg-white p-6 rounded-lg shadow border-l-4 border-indigo-500">
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm font-medium text-gray-600">Pending</p>
-              <p class="text-2xl font-bold text-yellow-600">{{ statistics.pending }}</p>
+              <p class="text-sm font-medium text-gray-600">Package Accepted</p>
+              <p class="text-2xl font-bold text-indigo-600">{{ statistics.packageAccepted }}</p>
             </div>
-            <div class="text-3xl text-yellow-600">⏳</div>
+            <div class="text-3xl text-indigo-600">✅</div>
           </div>
         </div>
 
+        <!-- In Processing -->
+        <div class="bg-white p-6 rounded-lg shadow border-l-4 border-yellow-500">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-600">In Processing</p>
+              <p class="text-2xl font-bold text-yellow-600">{{ statistics.inProcessing }}</p>
+            </div>
+            <div class="text-3xl text-yellow-600">⚙️</div>
+          </div>
+        </div>
+
+        <!-- To Deliver -->
+        <div class="bg-white p-6 rounded-lg shadow border-l-4 border-orange-500">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-600">To Deliver</p>
+              <p class="text-2xl font-bold text-orange-600">{{ statistics.toDeliver }}</p>
+            </div>
+            <div class="text-3xl text-orange-600">🚚</div>
+          </div>
+        </div>
+
+        <!-- Completed -->
         <div class="bg-white p-6 rounded-lg shadow border-l-4 border-green-500">
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm font-medium text-gray-600">Completed</p>
               <p class="text-2xl font-bold text-green-600">{{ statistics.completed }}</p>
             </div>
-            <div class="text-3xl text-green-600">✅</div>
+            <div class="text-3xl text-green-600">🎉</div>
+          </div>
+        </div>
+      </div>
+      <!-- Replace the priority statistics section with: -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <!-- Excelsior Priority -->
+        <div class="bg-white p-6 rounded-lg shadow border-l-4 border-red-500">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-600">Excelsior</p>
+              <p class="text-2xl font-bold text-red-600">{{ statistics.excelsior + statistics.urgent }}</p>
+              <p class="text-xs text-gray-500">1 semaine</p>
+            </div>
+            <div class="text-3xl text-red-600">🔴</div>
           </div>
         </div>
 
-        <div class="bg-white p-6 rounded-lg shadow border-l-4 border-purple-500">
+        <!-- Fast+ Priority -->
+        <div class="bg-white p-6 rounded-lg shadow border-l-4 border-orange-500">
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm font-medium text-gray-600">Total Cards</p>
-              <p class="text-2xl font-bold text-purple-600">{{ statistics.totalCards }}</p>
+              <p class="text-sm font-medium text-gray-600">Fast+</p>
+              <p class="text-2xl font-bold text-orange-600">{{ statistics.fastPlus + statistics.high }}</p>
+              <p class="text-xs text-gray-500">2 semaines</p>
             </div>
-            <div class="text-3xl text-purple-600">🃏</div>
+            <div class="text-3xl text-orange-600">🟠</div>
+          </div>
+        </div>
+
+        <!-- Fast Priority -->
+        <div class="bg-white p-6 rounded-lg shadow border-l-4 border-yellow-500">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-600">Fast</p>
+              <p class="text-2xl font-bold text-yellow-600">{{ statistics.fast + statistics.medium }}</p>
+              <p class="text-xs text-gray-500">4 semaines</p>
+            </div>
+            <div class="text-3xl text-yellow-600">🟡</div>
+          </div>
+        </div>
+
+        <!-- Classic Priority -->
+        <div class="bg-white p-6 rounded-lg shadow border-l-4 border-green-500">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-600">Classic</p>
+              <p class="text-2xl font-bold text-green-600">{{ statistics.classic + statistics.low }}</p>
+              <p class="text-xs text-gray-500">8 semaines</p>
+            </div>
+            <div class="text-3xl text-green-600">🟢</div>
           </div>
         </div>
       </div>
@@ -146,9 +218,19 @@
             <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
             <select v-model="filterStatus" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
               <option value="all">All Statuses</option>
-              <option value="PENDING">Pending</option>
-              <option value="IN_PROGRESS">In Progress</option>
-              <option value="COMPLETED">Completed</option>
+              <option value="1">To be received</option>
+              <option value="9">Package accepted</option>
+              <option value="10">To be scanned</option>
+              <option value="11">To be opened</option>
+              <option value="2">To be evaluated</option>
+              <option value="3">To be encapsulated</option>
+              <option value="4">To be prepared</option>
+              <option value="7">To be unsealed</option>
+              <option value="6">To be seen</option>
+              <option value="41">To be delivered</option>
+              <option value="42">To be sent</option>
+              <option value="5">Sent</option>
+              <option value="8">Received</option>
             </select>
           </div>
 
@@ -156,12 +238,13 @@
             <label class="block text-sm font-medium text-gray-700 mb-1">Priority</label>
             <select v-model="filterPriority" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
               <option value="all">All Priorities</option>
-              <option value="URGENT">Urgent</option>
-              <option value="HIGH">High</option>
-              <option value="MEDIUM">Medium</option>
-              <option value="LOW">Low</option>
+              <option value="EXCELSIOR">Priorité Excelsior</option>
+              <option value="FAST_PLUS">Priorité Fast+</option>
+              <option value="FAST">Priorité Fast</option>
+              <option value="CLASSIC">Priorité Classique</option>
             </select>
           </div>
+
 
           <div class="flex items-end">
             <button
@@ -245,10 +328,12 @@
 
               <!-- Status -->
               <td class="px-6 py-4 whitespace-nowrap">
-                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
-                        :class="getStatusColor(order.status)">
-                    {{ getStatusLabel(order.status) }}
-                  </span>
+                <span
+                  class="inline-flex px-2 py-1 text-xs font-semibold rounded-full"
+                  :class="getStatusColor(order.status)"
+                >
+                  {{ getStatusText(order.status) }}
+                </span>
               </td>
 
               <!-- Duration -->
@@ -518,6 +603,50 @@ const filterStatus = ref('all')
 const filterPriority = ref('all')
 const searchTerm = ref('')
 
+
+const testLoad = async () => {
+  console.log('🧪 TEST LOAD START')
+
+  try {
+    loading.value = true
+    console.log('🧪 Loading set to true')
+
+    const response = await fetch('http://localhost:8080/api/orders')
+    console.log('🧪 Response status:', response.status)
+    console.log('🧪 Response ok:', response.ok)
+
+    if (response.ok) {
+      const data = await response.json()
+      console.log('🧪 Data received:', data)
+      console.log('🧪 Data type:', typeof data)
+      console.log('🧪 Is array:', Array.isArray(data))
+      console.log('🧪 Length:', data.length)
+
+      if (data.length > 0) {
+        console.log('🧪 First item:', data[0])
+      }
+
+      // DIRECT assignment
+      orders.value = data
+      console.log('🧪 Orders.value after assignment:', orders.value)
+      console.log('🧪 Orders.value length:', orders.value.length)
+
+    } else {
+      console.error('🧪 Response not OK')
+    }
+
+  } catch (error) {
+    console.error('🧪 Error:', error)
+  } finally {
+    loading.value = false
+    console.log('🧪 Loading set to false')
+  }
+
+  console.log('🧪 TEST LOAD END')
+}
+
+
+
 // ========== COMPUTED ==========
 const filteredOrders = computed(() => {
   let filtered = [...orders.value]
@@ -535,8 +664,11 @@ const filteredOrders = computed(() => {
 
   // Status filter
   if (filterStatus.value !== 'all') {
-    filtered = filtered.filter(order => order.status === filterStatus.value)
+    // Convert filterStatus to number for comparison
+    const statusToMatch = parseInt(filterStatus.value)
+    filtered = filtered.filter(order => order.status === statusToMatch)
   }
+
 
   // Priority filter
   if (filterPriority.value !== 'all') {
@@ -555,19 +687,141 @@ const filteredOrders = computed(() => {
   return filtered
 })
 
+// Add this to Orders.vue for testing the corrected mapping:
+const testPriorityMapping = async () => {
+  try {
+    console.log('🧪 Testing priority mapping...')
+
+    const response = await fetch(`${API_BASE_URL}/api/orders/test/priority-mapping`)
+    if (response.ok) {
+      const data = await response.json()
+      console.log('✅ Priority mapping test results:', data)
+
+      // Show priority distribution
+      console.log('📊 Delai distribution in database:')
+      Object.entries(data.delaiStatistics).forEach(([delai, count]) => {
+        const mapped = data.mapping[delai] || 'UNMAPPED'
+        console.log(`  ${delai} → ${mapped}: ${count} orders`)
+      })
+
+      // Show sample orders
+      console.log('📋 Sample orders with mapping:')
+      data.sampleOrders.slice(0, 10).forEach(order => {
+        console.log(`  ${order.orderNumber}: ${order.delai} → ${order.mappedPriority}`)
+      })
+
+      alert(`✅ Test completed! Check console for details.\n\nFound ${Object.keys(data.delaiStatistics).length} different delai values in database.`)
+    } else {
+      throw new Error(`HTTP ${response.status}`)
+    }
+  } catch (error) {
+    console.error('❌ Priority mapping test failed:', error)
+    alert('❌ Test failed. Check console for details.')
+  }
+}
+
+
+// In the frontend, update the priority mapping to handle the new values:
+const mapPriority = (priority) => {
+  if (!priority) return 'FAST' // Default changed from MEDIUM to FAST
+  const p = String(priority).toUpperCase()
+
+  // Handle new priority values
+  if (p === 'EXCELSIOR' || p === 'X') return 'EXCELSIOR'
+  if (p === 'FAST_PLUS' || p === 'FAST+' || p === 'FPLUS') return 'FAST_PLUS'
+  if (p === 'FAST' || p === 'F') return 'FAST'
+  if (p === 'CLASSIC' || p === 'C' || p === 'E') return 'CLASSIC'
+
+  // Legacy mapping for compatibility
+  if (p.includes('URGENT')) return 'EXCELSIOR'
+  if (p.includes('HIGH') || p.includes('HAUTE')) return 'FAST_PLUS'
+  if (p.includes('MEDIUM')) return 'FAST'
+  if (p.includes('LOW') || p.includes('BASSE')) return 'CLASSIC'
+
+  return 'FAST' // Default fallback
+}
+
+// Replace the getPriorityColor function:
+const getPriorityColor = (priority) => {
+  switch (priority?.toUpperCase()) {
+    case 'EXCELSIOR': return 'bg-red-100 text-red-800'
+    case 'FAST_PLUS': return 'bg-orange-100 text-orange-800'
+    case 'FAST': return 'bg-yellow-100 text-yellow-800'
+    case 'CLASSIC': return 'bg-green-100 text-green-800'
+    // Keep legacy support for transition period
+    case 'URGENT': return 'bg-red-100 text-red-800'
+    case 'HIGH': return 'bg-orange-100 text-orange-800'
+    case 'MEDIUM': return 'bg-yellow-100 text-yellow-800'
+    case 'LOW': return 'bg-green-100 text-green-800'
+    default: return 'bg-gray-100 text-gray-800'
+  }
+}
+
+// Replace the getPriorityLabel function:
+const getPriorityLabel = (priority) => {
+  switch (priority?.toUpperCase()) {
+    case 'EXCELSIOR': return '🔴 Priorité Excelsior'
+    case 'FAST_PLUS': return '🟠 Priorité Fast+'
+    case 'FAST': return '🟡 Priorité Fast'
+    case 'CLASSIC': return '🟢 Priorité Classique'
+    // Keep legacy support for transition period
+    case 'URGENT': return '🔴 Urgent'
+    case 'HIGH': return '🟠 High'
+    case 'MEDIUM': return '🟡 Medium'
+    case 'LOW': return '🟢 Low'
+    default: return '⚪ Unknown'
+  }
+}
+
+
+
 const statistics = computed(() => {
   const total = filteredOrders.value.length
   const totalInDb = orders.value.length
-  const pending = filteredOrders.value.filter(o => o.status === 'PENDING').length
-  const inProgress = filteredOrders.value.filter(o => o.status === 'IN_PROGRESS').length
-  const completed = filteredOrders.value.filter(o => o.status === 'COMPLETED').length
+
+  // Use the actual status codes instead of string values
+  const toReceive = filteredOrders.value.filter(o => o.status === 1).length
+  const packageAccepted = filteredOrders.value.filter(o => o.status === 9).length
+  const inProcessing = filteredOrders.value.filter(o =>
+    [10, 11, 2, 3, 4, 7, 6].includes(o.status)
+  ).length
+  const toDeliver = filteredOrders.value.filter(o => [41, 42].includes(o.status)).length
+  const completed = filteredOrders.value.filter(o => [5, 8].includes(o.status)).length
+
+  // Count new priorities
+  const excelsior = filteredOrders.value.filter(o => o.priority === 'EXCELSIOR').length
+  const fastPlus = filteredOrders.value.filter(o => o.priority === 'FAST_PLUS').length
+  const fast = filteredOrders.value.filter(o => o.priority === 'FAST').length
+  const classic = filteredOrders.value.filter(o => o.priority === 'CLASSIC').length
+
+  // For backward compatibility, also count legacy priorities
+  const urgent = filteredOrders.value.filter(o => o.priority === 'URGENT').length
+  const high = filteredOrders.value.filter(o => o.priority === 'HIGH').length
+  const medium = filteredOrders.value.filter(o => o.priority === 'MEDIUM').length
+  const low = filteredOrders.value.filter(o => o.priority === 'LOW').length
+
+
+
   const totalCards = filteredOrders.value.reduce((sum, o) => sum + o.cardCount, 0)
 
   return {
     total,
     totalInDb,
-    pending,
-    inProgress,
+    // New priorities
+    excelsior,
+    fastPlus,
+    fast,
+    classic,
+    // Legacy priorities (for transition)
+    urgent,
+    high,
+    medium,
+    low,
+
+    toReceive,
+    packageAccepted,
+    inProcessing,
+    toDeliver,
     completed,
     totalCards
   }
@@ -647,26 +901,40 @@ const mapOrderFromApi = (order) => {
   }
 }
 
-const mapPriority = (priority) => {
-  if (!priority) return 'MEDIUM'
-  const p = String(priority).toUpperCase()
-  if (p.includes('URGENT')) return 'URGENT'
-  if (p.includes('HIGH') || p.includes('HAUTE')) return 'HIGH'
-  if (p.includes('LOW') || p.includes('BASSE')) return 'LOW'
-  return 'MEDIUM'
-}
 
 const mapStatus = (status) => {
+  // If status is already a number, return it as is
   if (typeof status === 'number') {
-    switch (status) {
-      case 1: return 'PENDING'
-      case 2: return 'SCHEDULED'
-      case 3: return 'IN_PROGRESS'
-      case 4: return 'COMPLETED'
-      default: return 'PENDING'
-    }
+    return status
   }
-  return String(status || 'PENDING').toUpperCase()
+
+  // If status is a string, try to convert it
+  const statusNum = parseInt(status)
+  if (!isNaN(statusNum)) {
+    return statusNum
+  }
+
+  // Fallback mapping for string values (if any old data exists)
+  const stringToStatusMap = {
+    'PENDING': 1,
+    'TO_RECEIVE': 1,
+    'PACKAGE_ACCEPTED': 9,
+    'TO_SCAN': 10,
+    'TO_OPEN': 11,
+    'TO_EVALUATE': 2,
+    'TO_CERTIFY': 3,
+    'TO_PREPARE': 4,
+    'TO_UNSEAL': 7,
+    'TO_SEE': 6,
+    'TO_DISTRIBUTE': 41,
+    'TO_SEND': 42,
+    'SENT': 5,
+    'RECEIVED': 8,
+    'IN_PROGRESS': 4, // Default to "to be prepared"
+    'COMPLETED': 5    // Default to "sent"
+  }
+
+  return stringToStatusMap[String(status).toUpperCase()] || 1 // Default to "to be received"
 }
 
 const refreshOrders = () => loadOrders()
@@ -692,35 +960,8 @@ const viewDetails = (order) => {
 const startOrder = (id) => console.log('Start order:', id)
 const completeOrder = (id) => console.log('Complete order:', id)
 
-const getPriorityColor = (priority) => {
-  switch (priority?.toUpperCase()) {
-    case 'URGENT': return 'bg-red-100 text-red-800'
-    case 'HIGH': return 'bg-orange-100 text-orange-800'
-    case 'MEDIUM': return 'bg-yellow-100 text-yellow-800'
-    case 'LOW': return 'bg-green-100 text-green-800'
-    default: return 'bg-gray-100 text-gray-800'
-  }
-}
 
-const getPriorityLabel = (priority) => {
-  switch (priority?.toUpperCase()) {
-    case 'URGENT': return '🔴 Urgent'
-    case 'HIGH': return '🟠 High'
-    case 'MEDIUM': return '🟡 Medium'
-    case 'LOW': return '🟢 Low'
-    default: return '⚪ Unknown'
-  }
-}
 
-const getStatusColor = (status) => {
-  switch (status?.toUpperCase()) {
-    case 'PENDING': return 'bg-gray-100 text-gray-800'
-    case 'SCHEDULED': return 'bg-blue-100 text-blue-800'
-    case 'IN_PROGRESS': return 'bg-yellow-100 text-yellow-800'
-    case 'COMPLETED': return 'bg-green-100 text-green-800'
-    default: return 'bg-gray-100 text-gray-800'
-  }
-}
 
 const getStatusLabel = (status) => {
   switch (status?.toUpperCase()) {
@@ -731,6 +972,44 @@ const getStatusLabel = (status) => {
     default: return 'Unknown'
   }
 }
+
+const getStatusText = (status) => {
+  const statusMap = {
+    1: 'To be received',
+    9: 'Package accepted',
+    10: 'To be scanned',
+    11: 'To be opened',
+    2: 'To be evaluated',
+    3: 'To be encapsulated',
+    4: 'To be prepared',
+    7: 'To be unsealed',
+    6: 'To be seen',
+    41: 'To be delivered',
+    42: 'To be sent',
+    5: 'Sent',
+    8: 'Received'
+  }
+  return statusMap[status] || `Status ${status}`
+}
+
+const getStatusColor = (status) => {
+  // Reception stage - blue
+  if ([1, 9].includes(status)) return 'bg-blue-100 text-blue-800'
+
+  // Processing stage - yellow
+  if ([10, 11, 2, 3, 4, 7, 6].includes(status)) return 'bg-yellow-100 text-yellow-800'
+
+  // Shipping stage - orange
+  if ([41, 42].includes(status)) return 'bg-orange-100 text-orange-800'
+
+  // Completed stage - green
+  if ([5, 8].includes(status)) return 'bg-green-100 text-green-800'
+
+  // Default - gray
+  return 'bg-gray-100 text-gray-800'
+}
+
+
 
 const getQualityIndicator = (percentage) => {
   if (percentage >= 95) return '🟢'

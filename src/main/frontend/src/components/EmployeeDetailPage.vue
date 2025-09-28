@@ -526,8 +526,47 @@ const loading = ref(false)
 const loadingEmployee = ref(false)
 const employeeData = ref<any>(null)
 const orders = ref<any[]>([])
-const selectedDate = ref(props.selectedDate)
+//const selectedDate = ref(props.selectedDate)
+const selectedDate = ref('2025-06-01')
+const debugEmployeePlanning = async (employeeId: string) => {
+  console.log('🔍 === DEBUGGING EMPLOYEE PLANNING ===')
+  console.log('Employee ID:', employeeId)
+  console.log('Selected Date:', selectedDate.value)
 
+  try {
+    // Test with current date
+    console.log('Testing with current date...')
+    const currentResponse = await fetch(`${API_BASE_URL}/api/planning/employee/${employeeId}?date=${selectedDate.value}`)
+    console.log('Current date response:', currentResponse.status)
+    if (currentResponse.ok) {
+      const currentData = await currentResponse.json()
+      console.log('Current date data:', currentData)
+    }
+
+    // Test without date filter
+    console.log('Testing without date filter...')
+    const noDateResponse = await fetch(`${API_BASE_URL}/api/planning/employee/${employeeId}`)
+    console.log('No date response:', currentResponse.status)
+    if (noDateResponse.ok) {
+      const noDateData = await noDateResponse.json()
+      console.log('No date data:', noDateData)
+    }
+
+    // Test with planning generation date
+    console.log('Testing with 2025-06-01...')
+    const planningDateResponse = await fetch(`${API_BASE_URL}/api/planning/employee/${employeeId}?date=2025-06-01`)
+    console.log('Planning date response:', planningDateResponse.status)
+    if (planningDateResponse.ok) {
+      const planningDateData = await planningDateResponse.json()
+      console.log('Planning date data:', planningDateData)
+    }
+
+  } catch (error) {
+    console.error('Debug error:', error)
+  }
+
+  console.log('🏁 === DEBUG COMPLETE ===')
+}
 // Make sure the back button emits the correct event
 const goBackToEmployees = () => {
   console.log('🔙 Going back to employees list')

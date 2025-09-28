@@ -224,6 +224,28 @@
               </div>
             </div>
 
+            <!-- Date Filter for Planning View -->
+            <div v-if="currentView === 'planning'" class="bg-white rounded-lg shadow p-4 mb-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <h3 class="text-lg font-semibold text-gray-900">📅 Planning Date</h3>
+                  <p class="text-sm text-gray-600">Select date to view planning assignments</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                  <label class="text-sm font-medium text-gray-700">Date:</label>
+                  <input
+                    type="date"
+                    v-model="selectedDate"
+                    @change="loadPlanningForSelectedDate"
+                    class="border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                  />
+                  <div class="text-sm text-gray-500">
+                    Current: {{ selectedDate }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- ✅ PLANNING ACTIONS -->
             <div class="flex space-x-2">
               <button
@@ -283,7 +305,8 @@ import { API_BASE_URL, API_ENDPOINTS } from '@/config/api'
 // ========== STATE ==========
 const currentView = ref<'management' | 'planning'>('management')
 const selectedEmployeeId = ref<string | null>(null)
-const selectedDate = ref(new Date().toISOString().split('T')[0])
+//const selectedDate = ref(new Date().toISOString().split('T')[0])
+const selectedDate = ref('2025-06-01') // Use the planning date instead of today
 const loading = ref(false)
 const showAddForm = ref(false)
 
@@ -294,6 +317,12 @@ const newEmployee = ref<NewEmployee>({
   lastName: '',
   email: ''
 })
+
+const loadPlanningForSelectedDate = async () => {
+  if (selectedEmployeeId.value && currentView.value === 'planning') {
+    await loadEmployeePlannings(selectedEmployeeId.value)
+  }
+}
 
 // ========== COMPUTED ==========
 const stats = computed(() => ({
@@ -479,45 +508,85 @@ const viewEmployeePlanning = async (employeeId: string) => {
 const loadEmployeePlannings = async (employeeId: string) => {
   try {
     loading.value = true
-    console.log('📋 Loading plannings for employee:', employeeId)
+    console.log('📋 Loading plannings for employee:', employeeId, 'for date:', selectedDate.value)
 
-    // Charger les plannings existants pour cet employé
+    // Use the selected date (which should be 2025-06-01 to match the planning)
     const response = await fetch(`${API_BASE_URL}/api/planning/employee/${employeeId}?date=${selectedDate.value}`)
 
     if (response.ok) {
       const data = await response.json()
       console.log('✅ Employee plannings loaded:', data)
 
-      // Mettre à jour l'affichage avec les plannings de l'employé
-      const employee  = employees.value.find(emp => emp.id === employeeId)
+      // Update the display with employee plannings
+      const employee = employees.value.find(emp => emp.id === employeeId)
       if (employee) {
         employee.plannings = data.plannings || []
         employee.assignedOrders = data.orders || []
         employee.totalWorkload = data.totalMinutes || 0
       }
 
-      showNotification(`Loaded ${data.plannings?.length || 0} plannings for employee`, 'success')
+      const orderCount = data.orders?.length || 0
+      if (orderCount === 0) {
+        // Try loading without date filter to see if data exists for other dates
+        await checkForOrdersOnOtherDates(employeeId)
+      } else {
+        showNotification(`✅ Loaded ${orderCount} orders for employee on ${selectedDate.value}`, 'success')
+      }
 
     } else if (response.status === 404) {
-      // Pas de plannings trouvés - normal
-      console.log('ℹ️ No plannings found for employee:', employeeId)
-      showNotification('No plannings found for this employee. Click "Generate Planning" to create assignments.', 'info')
-
+      console.log('ℹ️ No plannings found for employee:', employeeId, 'on date:', selectedDate.value)
+      await checkForOrdersOnOtherDates(employeeId)
     } else {
-      throw new Error(`HTTP ${response.status}`)
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
     }
 
   } catch (error) {
     console.error('❌ Error loading employee plannings:', error)
-
-    // Si l'endpoint n'existe pas, afficher une explication
-    showNotification('Employee planning view - use "Generate Planning" to create assignments', 'info')
-
+    showNotification('Error loading employee planning. Please try again.', 'error')
   } finally {
     loading.value = false
   }
 }
 
+// ========== 3. ADD FUNCTION TO CHECK OTHER DATES ==========
+
+const checkForOrdersOnOtherDates = async (employeeId: string) => {
+  try {
+    console.log('🔍 Checking for orders on other dates for employee:', employeeId)
+
+    // Try without date filter to see if employee has any orders
+    const response = await fetch(`${API_BASE_URL}/api/planning/employee/${employeeId}`)
+
+    if (response.ok) {
+      const data = await response.json()
+      const totalOrders = data.orders?.length || 0
+
+      if (totalOrders > 0) {
+        // Find the dates where this employee has orders
+        const orderDates = [...new Set(data.orders.map(order => order.planningDate))]
+
+        showNotification(
+          `Employee has ${totalOrders} orders on other dates: ${orderDates.join(', ')}. Try changing the date filter.`,
+          'info'
+        )
+
+        // Optionally, auto-set to the first available date
+        if (orderDates.length > 0) {
+          selectedDate.value = orderDates[0]
+          // Reload with the correct date
+          await loadEmployeePlannings(employeeId)
+        }
+      } else {
+        showNotification(
+          'No orders found for this employee on any date. Generate planning first.',
+          'info'
+        )
+      }
+    }
+  } catch (error) {
+    console.error('Error checking other dates:', error)
+  }
+}
 
 
 const viewEmployeeOrders = (employeeId: string) => {

@@ -69,6 +69,15 @@ public class Order extends AbstractUlidEntity {
     @Builder.Default
     private OrderPriority priority = OrderPriority.FAST;
 
+
+    /**
+     * Deadline/Priority code from database (X, F, F+, C, E)
+     * This maps to the OrderPriority enum
+     */
+    @Column(name = "delai", length = 10)
+    private String delai;
+
+
     /**
      * Total price of the order (removed precision and scale for Double)
      */
@@ -191,7 +200,7 @@ public class Order extends AbstractUlidEntity {
             this.priority = OrderPriority.FAST;
         }
         if (this.status == null) {
-            this.status = OrderStatus.PENDING;
+            this.status = OrderStatus.PENDING.getCode();
         }
         // Calculate estimated time if not set
         if (this.estimatedTimeMinutes == null && this.cardCount != null) {
@@ -294,5 +303,167 @@ public class Order extends AbstractUlidEntity {
     public void markAsCompleted() {
         this.status = STATUS_ENVOYEE;
     }
+
+    // Add this enum inside the Order class after the OrderPriority enum
+
+    /**
+     * Order status enumeration corresponding to database integer values
+     */
+    public enum OrderStatus {
+        PENDING(STATUS_A_RECEPTIONNER, "To be received"),
+        PACKAGE_ACCEPTED(STATUS_COLIS_ACCEPTE, "Package accepted"),
+        TO_SCAN(STATUS_A_SCANNER, "To be scanned"),
+        TO_OPEN(STATUS_A_OUVRIR, "To be opened"),
+        TO_EVALUATE(STATUS_A_NOTER, "To be evaluated"),
+        TO_CERTIFY(STATUS_A_CERTIFIER, "To be encapsulated"),
+        TO_PREPARE(STATUS_A_PREPARER, "To be prepared"),
+        TO_UNSEAL(STATUS_A_DESCELLER, "To be unsealed"),
+        TO_SEE(STATUS_A_VOIR, "To be seen"),
+        TO_DISTRIBUTE(STATUS_A_DISTRIBUER, "To be delivered"),
+        TO_SEND(STATUS_A_ENVOYER, "To be sent"),
+        SENT(STATUS_ENVOYEE, "Sent"),
+        RECEIVED(STATUS_RECU, "Received");
+
+        private final int code;
+        private final String displayName;
+
+        OrderStatus(int code, String displayName) {
+            this.code = code;
+            this.displayName = displayName;
+        }
+
+        public int getCode() {
+            return code;
+        }
+
+        public String getDisplayName() {
+            return displayName;
+        }
+
+        /**
+         * Get OrderStatus from integer code
+         */
+        public static OrderStatus fromCode(int code) {
+            for (OrderStatus status : values()) {
+                if (status.code == code) {
+                    return status;
+                }
+            }
+            throw new IllegalArgumentException("Unknown status code: " + code);
+        }
+
+        /**
+         * Check if status indicates the order can be assigned to planning
+         */
+        public boolean canBeAssigned() {
+            return this != SENT && this != RECEIVED;
+        }
+
+        /**
+         * Check if status indicates the order is completed
+         */
+        public boolean isCompleted() {
+            return this == SENT || this == RECEIVED;
+        }
+    }
+
+// Add these helper methods to work with both enum and integer status
+
+    /**
+     * Get status as enum (for business logic)
+     */
+    public OrderStatus getStatusEnum() {
+        if (status == null) {
+            return OrderStatus.PENDING;
+        }
+        return OrderStatus.fromCode(status);
+    }
+
+    /**
+     * Set status from enum (for business logic)
+     */
+    public void setStatusEnum(OrderStatus orderStatus) {
+        this.status = orderStatus.getCode();
+    }
+
+    /**
+     * Get formatted status display text
+     */
+    public String getStatusDisplayText() {
+        return getStatusEnum().getDisplayName();
+    }
+
+    /**
+     * Map delai column value to OrderPriority enum
+     * @param delaiValue value from delai column (X, F, F+, C, E)
+     * @return corresponding OrderPriority enum
+     */
+    public static OrderPriority mapDelaiToPriority(String delaiValue) {
+        if (delaiValue == null || delaiValue.trim().isEmpty()) {
+            return OrderPriority.FAST; // Default
+        }
+
+        String delai = delaiValue.trim().toUpperCase();
+
+        switch (delai) {
+            case "X":
+                return OrderPriority.EXCELSIOR;
+            case "F+":
+            case "F PLUS":
+            case "FPLUS":
+                return OrderPriority.FAST_PLUS;
+            case "F":
+            case "FAST":
+                return OrderPriority.FAST;
+            case "C":
+            case "E":
+            case "CLASSIC":
+            case "ECONOMY":
+                return OrderPriority.CLASSIC;
+            default:
+                return OrderPriority.FAST; // Default fallback
+        }
+    }
+
+    /**
+     * Map OrderPriority enum to delai column value
+     * @param priority OrderPriority enum
+     * @return corresponding delai value for database
+     */
+    public static String mapPriorityToDelai(OrderPriority priority) {
+        if (priority == null) {
+            return "F"; // Default
+        }
+
+        switch (priority) {
+            case EXCELSIOR:
+                return "X";
+            case FAST_PLUS:
+                return "F+";
+            case FAST:
+                return "F";
+            case CLASSIC:
+                return "C";
+            default:
+                return "F"; // Default fallback
+        }
+    }
+
+
+
+    /**
+     * Get the priority enum based on delai value
+     */
+    public OrderPriority getPriorityFromDelai() {
+        return mapDelaiToPriority(this.delai);
+    }
+
+    /**
+     * Set delai based on priority enum
+     */
+    public void setDelaiFromPriority(OrderPriority priority) {
+        this.delai = mapPriorityToDelai(priority);
+    }
+
 
 }

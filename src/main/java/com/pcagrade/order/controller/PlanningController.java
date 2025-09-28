@@ -1012,24 +1012,40 @@ public class PlanningController {
 
             // ✅ Get orders with REAL card counts (same query as OrderService)
             String orderQuery = """
+            
             SELECT
-                HEX(o.id) as orderId,
-                o.num_commande as orderNumber,
-                o.date as orderDate,
-                COALESCE(o.delai, 'MEDIUM') as priority,
-                COALESCE(o.status, 1) as status,
-                COALESCE(
-                    (SELECT COUNT(*)
-                     FROM card_certification_order cco
-                     WHERE cco.order_id = o.id),
-                    0
-                ) as cardCount
-            FROM `order` o
-                                WHERE o.status NOT IN (5, 8)  -- Exclure ENVOYEE et RECU
-                                AND o.annulee = 0
-                                AND o.paused = 0
-            ORDER BY o.date ASC
-            """;
+                          HEX(o.id) as orderId,
+                          o.num_commande as orderNumber,
+                          o.date as orderDate,
+                          -- Map delai to priority for planning
+                          CASE
+                             WHEN o.delai = 'X' THEN 'EXCELSIOR'
+                             WHEN o.delai = 'F+' THEN 'FAST_PLUS'
+                             WHEN o.delai = 'F' THEN 'FAST'
+                             WHEN o.delai IN ('C', 'E') THEN 'CLASSIC'
+                             ELSE 'FAST'
+                          END as priority,
+                          COALESCE(o.status, 1) as status,
+                          CASE
+                              WHEN o.special_grades = 1 THEN 50
+                              ELSE 25
+                          END as cardCount
+                      FROM `order` o
+                        WHERE o.status NOT IN (5, 8)  -- Exclure ENVOYEE et RECU
+                        AND o.annulee = 0
+                        AND o.paused = 0
+                        -- Order by priority: X (EXCELSIOR) first
+                        ORDER BY 
+                            CASE o.delai 
+                                WHEN 'X' THEN 1
+                                WHEN 'F+' THEN 2
+                                WHEN 'F' THEN 3
+                                WHEN 'C' THEN 4
+                                WHEN 'E' THEN 4
+                                ELSE 5
+                            END ASC,
+                            o.date ASC
+                        """;
 
             Query orderQ = entityManager.createNativeQuery(orderQuery);
             //orderQ.setParameter(1, LocalDate.parse(startDate));
