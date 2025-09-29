@@ -1,5 +1,6 @@
 package com.pcagrade.order.service;
 
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import com.pcagrade.order.entity.Order;
@@ -8,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -15,6 +17,7 @@ import org.springframework.validation.annotation.Validated;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import org.springframework.web.bind.annotation.GetMapping;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -38,6 +41,8 @@ public class OrderService {
 
     @Autowired
     private EntityManager entityManager;
+
+
 
     // ========== CRUD OPERATIONS ==========
 
@@ -212,16 +217,7 @@ public class OrderService {
           AND o.annulee = 0
           AND o.paused = 0
         -- ✅ ORDER BY PRIORITY: X (EXCELSIOR) first
-        ORDER BY 
-            CASE o.delai 
-                WHEN 'X' THEN 1
-                WHEN 'F+' THEN 2
-                WHEN 'F' THEN 3
-                WHEN 'C' THEN 4
-                WHEN 'E' THEN 4
-                ELSE 5
-            END ASC,
-            o.date ASC
+        ORDER BY o.date ASC
         """;
 
             Query query = entityManager.createNativeQuery(sql);
@@ -509,16 +505,7 @@ public class OrderService {
         WHERE o.status NOT IN (5, 8)  -- Exclude ENVOYEE and RECU
           AND o.annulee = 0
         -- ✅ ORDER BY PRIORITY: X first, then F+, F, C/E
-        ORDER BY 
-            CASE o.delai 
-                WHEN 'X' THEN 1
-                WHEN 'F+' THEN 2
-                WHEN 'F' THEN 3
-                WHEN 'C' THEN 4
-                WHEN 'E' THEN 4
-                ELSE 5
-            END ASC,
-            o.date DESC
+        ORDER BY o.date DESC
         LIMIT 1000
         """;
 
@@ -614,74 +601,11 @@ public class OrderService {
         return getOrdersForPlanning(jour, mois, annee);
     }
 
-    /**
-     * Get recent orders with REAL card counts from database
-     * Fixed version that calculates actual card counts from card_certification_order table
-     */
-    @Transactional(readOnly = true)
-    public List<Map<String, Object>> getRecentOrders() {
-        log.info("🔍 Getting recent orders with REAL card counts from database");
-
-        String sql = """
-        SELECT
-            HEX(o.id) as id,
-            o.num_commande as orderNumber,
-            o.num_commande_client as clientOrderNumber,
-            DATE(o.date) as creationDate,
-            o.date as fullTimestamp,
-            o.status,
-            'MEDIUM' as priority,
-            0 as estimatedTimeMinutes,
-            0 as totalPrice,
-            -- ✅ VRAI NOMBRE DE CARTES depuis la table de jointure
-            COALESCE(
-                (SELECT COUNT(*)
-                 FROM card_certification_order cco
-                 WHERE cco.order_id = o.id),
-                0
-            ) as cardCount,
-            -- ✅ VRAIES CARTES AVEC NOM
-            COALESCE(
-                (SELECT COUNT(*)
-                 FROM card_certification_order cco
-                 INNER JOIN card_certification cc ON cco.card_certification_id = cc.id
-                 LEFT JOIN card_translation ct ON cc.card_id = ct.translatable_id AND ct.locale = 'fr'
-                 WHERE cco.order_id = o.id
-                 AND (ct.name IS NOT NULL AND ct.name != '' AND ct.name != 'NULL')),
-                0
-            ) as cardsWithName,
-            o.customer_id,
-            o.reference,
-            'fr' as language_code,
-            false as hasSpecialGrades
-        FROM `order` o
-        WHERE o.status NOT IN (5, 8)  -- Exclure ENVOYEE et RECU
-          AND o.annulee = 0
-        ORDER BY o.date DESC
-        LIMIT 1000
-        """;
-
-        try {
-            Query query = entityManager.createNativeQuery(sql);
-            @SuppressWarnings("unchecked")
-            List<Object[]> results = query.getResultList();
-
-            log.info("✅ Found {} orders", results.size());
-
-            return results.stream()
-                    .map(this::mapRowToOrderMap)
-                    .toList();
-
-        } catch (Exception e) {
-            log.error("❌ Error getting recent orders", e);
-            throw new RuntimeException("Failed to get orders: " + e.getMessage(), e);
-        }
-    }
 
     /**
      * Map database row to order map
      */
-    private Map<String, Object> mapRowToOrderMap(Object[] row) {
+    private Map<String, Object> mapRowToOrderMapSimple(Object[] row) {
         Map<String, Object> orderMap = new LinkedHashMap<>();
         int i = 0;
 
@@ -691,11 +615,11 @@ public class OrderService {
         orderMap.put("creationDate", row[i++]);
         orderMap.put("fullTimestamp", row[i++]);
         orderMap.put("status", row[i++]);
-        orderMap.put("priority", row[i++]);
+        orderMap.put("delai", row[i++]); // ✅ DIRECTEMENT delai (X, F+, F, C, E)
         orderMap.put("estimatedTimeMinutes", ((Number) row[i++]).intValue());
         orderMap.put("totalPrice", row[i++] != null ? ((Number) row[i - 1]).doubleValue() : 0.0);
-        orderMap.put("cardCount", ((Number) row[i++]).intValue());        // ✅ VRAI nombre
-        orderMap.put("cardsWithName", ((Number) row[i++]).intValue());    // ✅ VRAI nombre
+        orderMap.put("cardCount", ((Number) row[i++]).intValue());
+        orderMap.put("cardsWithName", ((Number) row[i++]).intValue());
         orderMap.put("customerId", row[i++]);
         orderMap.put("reference", row[i++]);
         orderMap.put("languageCode", row[i++]);
@@ -931,7 +855,7 @@ public class OrderService {
             '2025-06-01' as creationDate
         FROM `order` o 
         WHERE o.annulee = 0
-        LIMIT 10
+        LIMIT 1000
         """;
 
             Query query = entityManager.createNativeQuery(sql);
@@ -1008,5 +932,87 @@ public class OrderService {
             return fallback;
         }
     }
+
+    /**
+     * Get recent orders with REAL card counts from database
+     * Fixed version that calculates actual card counts from card_certification_order table
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getRecentOrders() {
+        try {
+            log.info("📦 Getting recent orders with ALL statuses (no filter)");
+
+            String sql = """
+            SELECT 
+                HEX(o.id) as id,
+                o.num_commande as orderNumber,
+                o.num_commande_client as clientOrderNumber,
+                o.date as creationDate,
+                o.date as fullTimestamp,
+                o.status,
+                o.delai,  -- ✅ DIRECTEMENT delai
+                COALESCE(
+                    (SELECT SUM(CASE WHEN cc.estimated_time_minutes IS NOT NULL 
+                        THEN cc.estimated_time_minutes ELSE 3 END)
+                     FROM card_certification_order cco 
+                     JOIN card_certification cc ON cco.card_certification_id = cc.id 
+                     WHERE cco.order_id = o.id),
+                    30
+                ) as estimatedTimeMinutes,
+                COALESCE(o.prix_total, 0) as totalPrice,
+                COALESCE(
+                    (SELECT COUNT(*) FROM card_certification_order cco WHERE cco.order_id = o.id),
+                    1
+                ) as cardCount,
+                COALESCE(
+                    (SELECT COUNT(*) FROM card_certification_order cco 
+                     JOIN card_certification cc ON cco.card_certification_id = cc.id 
+                     WHERE cco.order_id = o.id AND cc.nom IS NOT NULL AND cc.nom != ''),
+                    0
+                ) as cardsWithName,
+                o.customer_id,
+                o.reference,
+                'fr' as language_code,
+                false as hasSpecialGrades
+            FROM `order` o
+            WHERE o.annulee = 0  -- ✅ SEUL FILTRE : pas annulées
+            ORDER BY o.date DESC
+            -- LIMIT 1000
+            """;
+
+            Query query = entityManager.createNativeQuery(sql);
+            @SuppressWarnings("unchecked")
+            List<Object[]> results = query.getResultList();
+
+            log.info("✅ Found {} orders with ALL statuses", results.size());
+
+            List<Map<String, Object>> orders = results.stream()
+                    .map(this::mapRowToOrderMapSimple)
+                    .toList();
+
+            // ✅ LOG DELAI DISTRIBUTION
+            Map<String, Long> delaiDistribution = orders.stream()
+                    .collect(Collectors.groupingBy(
+                            o -> (String) o.getOrDefault("delai", "NULL"),
+                            Collectors.counting()
+                    ));
+            log.info("📊 DELAI distribution (ALL statuses): {}", delaiDistribution);
+
+            // ✅ LOG STATUS DISTRIBUTION pour info
+            Map<String, Long> statusDistribution = orders.stream()
+                    .collect(Collectors.groupingBy(
+                            o -> String.valueOf(o.getOrDefault("status", "NULL")),
+                            Collectors.counting()
+                    ));
+            log.info("📊 STATUS distribution: {}", statusDistribution);
+
+            return orders;
+
+        } catch (Exception e) {
+            log.error("❌ Error getting orders with all statuses", e);
+            throw new RuntimeException("Failed to get orders: " + e.getMessage(), e);
+        }
+    }
+
 
 }

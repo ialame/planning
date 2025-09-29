@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 import java.time.LocalDate;
-
+import java.util.stream.Stream;
 
 
 import jakarta.persistence.EntityManager;
@@ -41,41 +41,223 @@ public class OrderController {
      * ✅ FIXED - Main endpoint now uses correct priority mapping
      * GET /api/orders - Main endpoint for orders (expected by frontend)
      */
+    // ========== BACKEND AVEC PAGINATION - OrderController.java ==========
+
     @GetMapping("")
-    @Operation(summary = "Get recent orders with priority mapping", description = "Retrieve orders with correct delai->priority mapping")
-    public ResponseEntity<List<Map<String, Object>>> getOrders() {
+    public ResponseEntity<Map<String, Object>> getOrders(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "100") int size,
+            @RequestParam(required = false) String delai,
+            @RequestParam(required = false) Integer status,
+            @RequestParam(required = false) String search
+    ) {
         try {
-            log.info("📦 GET /api/orders called - Using CORRECTED priority mapping");
+            log.info("📦 GET /api/orders - page: {}, size: {}, delai: {}, status: {}, search: {}",
+                    page, size, delai, status, search);
 
-            // ✅ CALL THE NEW METHOD WITH PRIORITY MAPPING
-            List<Map<String, Object>> orders = orderService.getRecentOrdersWithPriorityMapping();
+            // Construction de la requête avec filtres
+            StringBuilder sqlBuilder = new StringBuilder("""
+            SELECT 
+                HEX(o.id) as id, 
+                o.num_commande as orderNumber, 
+                o.delai, 
+                o.status,
+                o.date as creationDate,
+                o.reference,
+                o.num_commande_client as clientOrderNumber,
+                COALESCE(
+                    (SELECT COUNT(*) FROM card_certification_order cco WHERE cco.order_id = o.id),
+                    0
+                ) as cardCount,
+                COALESCE(
+                    (SELECT COUNT(*) FROM card_certification_order cco 
+                     JOIN card_certification cc ON cco.card_certification_id = cc.id 
+                     JOIN card_translation ct ON cc.card_id = ct.translatable_id
+                     WHERE cco.order_id = o.id AND ct.name IS NOT NULL AND ct.name != ''),
+                    0
+                ) as cardsWithName,
+                COALESCE(
+                    (SELECT i.total_ht FROM invoice i WHERE i.order_id = o.id LIMIT 1),
+                    0
+                ) as totalPrice
+            FROM `order` o
+            WHERE o.annulee = 0
+            """
+            );
 
-            // ✅ LOG SAMPLE TO VERIFY PRIORITIES
-            if (!orders.isEmpty()) {
-                Map<String, Object> firstOrder = orders.get(0);
-                log.info("📋 Sample order: {} - delai: '{}' -> priority: '{}'",
-                        firstOrder.get("orderNumber"),
-                        firstOrder.get("delai"),
-                        firstOrder.get("priority"));
+            List<Object> parameters = new ArrayList<>();
+
+
+            // Filtres optionnels
+            if (delai != null && !delai.isEmpty()) {
+                sqlBuilder.append(" AND o.delai = ?");
+                parameters.add(delai);
             }
 
-            // ✅ LOG PRIORITY DISTRIBUTION FOR FRONTEND
-            Map<String, Long> priorityCount = orders.stream()
+            if (status != null) {
+                sqlBuilder.append(" AND o.status = ?");
+                parameters.add(status);
+            }
+
+            if (search != null && !search.trim().isEmpty()) {
+                sqlBuilder.append(" AND (o.num_commande LIKE ?");
+                sqlBuilder.append(" OR o.num_commande_client LIKE ?").append(")");
+                String searchPattern = "%" + search.trim() + "%";
+                parameters.add(searchPattern);
+                parameters.add(searchPattern);
+            }
+
+            // Ordre et pagination
+            sqlBuilder.append("""
+             ORDER BY o.date DESC
+            LIMIT ? OFFSET ?
+            """);
+
+            parameters.add(size);
+            parameters.add(page * size);
+
+            // Exécution de la requête principale
+            Query query = entityManager.createNativeQuery(sqlBuilder.toString());
+            for (int i = 0; i < parameters.size(); i++) {
+                query.setParameter(i + 1, parameters.get(i));
+            }
+
+            @SuppressWarnings("unchecked")
+            List<Object[]> results = query.getResultList();
+
+            // Construction de la liste des commandes
+            List<Map<String, Object>> orders = new ArrayList<>();
+            for (Object[] row : results) {
+                Map<String, Object> order = new HashMap<>();
+                order.put("id", row[0]);
+                order.put("orderNumber", row[1]);
+                order.put("delai", row[2]);
+                order.put("status", row[3]);
+                order.put("creationDate", row[4].toString().split(" ")[0]);
+                order.put("reference", row[5]);
+                order.put("clientOrderNumber", row[6]);
+
+                int cardCount = ((Number) row[7]).intValue();
+                int cardsWithName = ((Number) row[8]).intValue();
+                double totalPrice = row[9] != null ? ((Number) row[9]).doubleValue() : 0.0;
+
+                order.put("cardCount", cardCount);
+                order.put("cardsWithName", cardsWithName);
+                order.put("namePercentage", cardCount > 0 ? Math.round((cardsWithName * 100.0) / cardCount) : 0);
+                order.put("totalPrice", totalPrice);
+                order.put("estimatedTimeMinutes", cardCount * 3);
+                order.put("languageCode", "fr");
+                order.put("hasSpecialGrades", false);
+
+                orders.add(order);
+            }
+
+            // Requête pour le nombre total (pour la pagination)
+            String countSql = buildCountQuery(delai, status, search);
+            Query countQuery = entityManager.createNativeQuery(countSql);
+
+            // Ajouter les mêmes paramètres pour le count (sans LIMIT/OFFSET)
+            int countParamIndex = 1;
+            if (delai != null && !delai.isEmpty()) {
+                countQuery.setParameter(countParamIndex++, delai);
+            }
+            if (status != null) {
+                countQuery.setParameter(countParamIndex++, status);
+            }
+            if (search != null && !search.trim().isEmpty()) {
+                String searchPattern = "%" + search.trim() + "%";
+                countQuery.setParameter(countParamIndex++, searchPattern);
+                countQuery.setParameter(countParamIndex++, searchPattern);
+            }
+
+            Number totalCount = (Number) countQuery.getSingleResult();
+            int total = totalCount.intValue();
+            int totalPages = (int) Math.ceil((double) total / size);
+
+            // Métadonnées de pagination
+            Map<String, Object> pagination = new HashMap<>();
+            pagination.put("page", page);
+            pagination.put("size", size);
+            pagination.put("total", total);
+            pagination.put("totalPages", totalPages);
+            pagination.put("hasNext", page < totalPages - 1);
+            pagination.put("hasPrevious", page > 0);
+
+            // Statistiques rapides
+            Map<String, Long> delaiStats = orders.stream()
                     .collect(Collectors.groupingBy(
-                            o -> (String) o.get("priority"),
+                            o -> (String) o.get("delai"),
                             Collectors.counting()
                     ));
-            log.info("📊 FRONTEND will receive priority distribution: {}", priorityCount);
 
-            log.info("✅ Returning {} orders with correct priorities", orders.size());
-            return ResponseEntity.ok(orders);
+            // Réponse complète
+            Map<String, Object> response = new HashMap<>();
+            response.put("orders", orders);
+            response.put("pagination", pagination);
+            response.put("delaiDistribution", delaiStats);
+            response.put("filters", Map.of(
+                    "delai", delai != null ? delai : "all",
+                    "status", status != null ? status : "all",
+                    "search", search != null ? search : ""
+            ));
+
+
+// Après avoir calculé delaiStats, ajoutez les statistiques de statut
+            Map<Integer, Long> statusStats = orders.stream()
+                    .collect(Collectors.groupingBy(
+                            o -> (Integer) o.get("status"),
+                            Collectors.counting()
+                    ));
+
+// Calculer les groupes de statuts
+            long toReceive = statusStats.getOrDefault(1, 0L);
+            long packageAccepted = statusStats.getOrDefault(9, 0L);
+            long inProcessing = Stream.of(10, 11, 2, 3, 4, 7, 6)
+                    .mapToLong(s -> statusStats.getOrDefault(s, 0L))
+                    .sum();
+            long toDeliver = Stream.of(41, 42)
+                    .mapToLong(s -> statusStats.getOrDefault(s, 0L))
+                    .sum();
+            long completed = Stream.of(5, 8)
+                    .mapToLong(s -> statusStats.getOrDefault(s, 0L))
+                    .sum();
+
+// Ajouter à la réponse
+            response.put("statusStats", Map.of(
+                    "toReceive", toReceive,
+                    "packageAccepted", packageAccepted,
+                    "inProcessing", inProcessing,
+                    "toDeliver", toDeliver,
+                    "completed", completed
+            ));
+
+            log.info("✅ Returning page {} of {} ({} orders)", page + 1, totalPages, orders.size());
+            return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            log.error("❌ Error in GET /api/orders", e);
+            log.error("❌ Error getting paginated orders", e);
             return ResponseEntity.internalServerError().build();
         }
     }
 
+    // Méthode helper pour construire la requête de count
+    private String buildCountQuery(String delai, Integer status, String search) {
+        StringBuilder countSql = new StringBuilder("SELECT COUNT(*) FROM `order` o WHERE o.annulee = 0");
+
+        if (delai != null && !delai.isEmpty()) {
+            countSql.append(" AND o.delai = ?");
+        }
+
+        if (status != null) {
+            countSql.append(" AND o.status = ?");
+        }
+
+        if (search != null && !search.trim().isEmpty()) {
+            countSql.append(" AND (o.num_commande LIKE ? OR o.num_commande_client LIKE ?)");
+        }
+
+        return countSql.toString();
+    }
 
     /**
      * 🧪 TEST ENDPOINT - Quick test to verify priority mapping
@@ -964,5 +1146,134 @@ public class OrderController {
                     ));
         }
     }
+
+    @GetMapping("/test-delai")
+    @Operation(summary = "Test delai values directly")
+    public ResponseEntity<Map<String, Object>> testDelai() {
+        try {
+            log.info("🧪 Testing delai values directly (no mapping)");
+
+            String sql = """
+            SELECT 
+                o.delai,
+                COUNT(*) as count
+            FROM `order` o 
+            WHERE o.annulee = 0
+            GROUP BY o.delai
+            ORDER BY COUNT(*) DESC
+            """;
+
+            Query query = entityManager.createNativeQuery(sql);
+            @SuppressWarnings("unchecked")
+            List<Object[]> results = query.getResultList();
+
+            Map<String, Object> response = new HashMap<>();
+            List<Map<String, Object>> delaiStats = new ArrayList<>();
+
+            for (Object[] row : results) {
+                Map<String, Object> stat = new HashMap<>();
+                stat.put("delai", row[0]);
+                stat.put("count", ((Number) row[1]).intValue());
+                delaiStats.add(stat);
+            }
+
+            response.put("success", true);
+            response.put("delaiStatistics", delaiStats);
+            response.put("message", "Direct delai test completed");
+
+            log.info("🧪 Delai test results: {}", delaiStats);
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("❌ Delai test failed", e);
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/test-all-statuses")
+    @Operation(summary = "Test orders with ALL statuses")
+    public ResponseEntity<Map<String, Object>> testAllStatuses() {
+        try {
+            log.info("🧪 Testing orders with ALL statuses vs filtered");
+
+            // Avec tous les statuts
+            String sqlAll = """
+            SELECT 
+                delai,
+                status,
+                COUNT(*) as count
+            FROM `order` o 
+            WHERE o.annulee = 0
+            GROUP BY delai, status
+            ORDER BY delai, status
+            """;
+
+            // Les 10 premières avec tous les statuts
+            String sqlTop10 = """
+            SELECT 
+                o.delai,
+                o.status,
+                COUNT(*) as count
+            FROM `order` o 
+            WHERE o.annulee = 0
+            ORDER BY 
+                CASE o.delai 
+                    WHEN 'X' THEN 1
+                    WHEN 'F+' THEN 2
+                    WHEN 'F' THEN 3
+                    WHEN 'C' THEN 4
+                    WHEN 'E' THEN 4
+                    ELSE 5
+                END ASC,
+                o.date DESC
+            LIMIT 10
+            """;
+
+            Query queryAll = entityManager.createNativeQuery(sqlAll);
+            @SuppressWarnings("unchecked")
+            List<Object[]> resultsAll = queryAll.getResultList();
+
+            Query queryTop10 = entityManager.createNativeQuery(sqlTop10);
+            @SuppressWarnings("unchecked")
+            List<Object[]> resultsTop10 = queryTop10.getResultList();
+
+            Map<String, Object> response = new HashMap<>();
+
+            List<Map<String, Object>> allStats = new ArrayList<>();
+            for (Object[] row : resultsAll) {
+                Map<String, Object> stat = new HashMap<>();
+                stat.put("delai", row[0]);
+                stat.put("status", row[1]);
+                stat.put("count", ((Number) row[2]).intValue());
+                allStats.add(stat);
+            }
+
+            List<Map<String, Object>> top10Stats = new ArrayList<>();
+            for (Object[] row : resultsTop10) {
+                Map<String, Object> stat = new HashMap<>();
+                stat.put("delai", row[0]);
+                stat.put("status", row[1]);
+                stat.put("count", ((Number) row[2]).intValue());
+                top10Stats.add(stat);
+            }
+
+            response.put("success", true);
+            response.put("allStatuses", allStats);
+            response.put("top10Preview", top10Stats);
+            response.put("message", "All statuses test completed");
+
+            log.info("🧪 All statuses test: {} total combinations, {} in top 10",
+                    allStats.size(), top10Stats.size());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("❌ All statuses test failed", e);
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
 
 }
