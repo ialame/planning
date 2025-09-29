@@ -1,9 +1,9 @@
 <template>
   <div class="orders-view">
     <!-- Header -->
-    <div class="bg-white rounded-lg shadow p-6 mb-6">
-      <h1 class="text-3xl font-bold text-gray-900 mb-4">📋 Orders Management</h1>
-      <p class="text-gray-600">Manage Pokémon card orders with pagination</p>
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold text-gray-900">📦 Orders Management</h1>
+      <p class="text-gray-600 mt-1">View and manage all Pokemon card orders</p>
     </div>
 
     <!-- Statistiques rapides -->
@@ -107,36 +107,37 @@
     </div>
 
 
-    <!-- Filtres -->
+    <!-- Filters -->
     <div class="bg-white rounded-lg shadow p-6 mb-6">
-      <h3 class="text-lg font-semibold text-gray-900 mb-4">🔍 Search & Filters</h3>
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">🔍 Filters</h2>
+
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Search</label>
           <input
             v-model="filters.search"
             @input="debouncedSearch"
             type="text"
-            placeholder="Order number..."
-            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Order number, client ref..."
+            class="w-full border border-gray-300 rounded-md px-3 py-2"
           />
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
           <select v-model="filters.status" @change="loadOrders(0)" class="w-full border border-gray-300 rounded-md px-3 py-2">
             <option value="all">All Statuses</option>
-            <option value="1">To be received</option>
-            <option value="2">To be evaluated</option>
-            <option value="3">To be encapsulated</option>
-            <option value="4">To be prepared</option>
-            <option value="5">Sent</option>
-            <option value="8">Received</option>
+            <option :value="1">To be received</option>
+            <option :value="2">To be evaluated</option>
+            <option :value="3">To be encapsulated</option>
+            <option :value="4">To be prepared</option>
+            <option :value="5">Sent</option>
+            <option :value="8">Received</option>
           </select>
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Delai</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Priority (Delai)</label>
           <select v-model="filters.delai" @change="loadOrders(0)" class="w-full border border-gray-300 rounded-md px-3 py-2">
             <option value="all">All Delais</option>
             <option value="X">🔴 Excelsior (X)</option>
@@ -157,12 +158,20 @@
       </div>
     </div>
 
-    <!-- Info pagination -->
+    <!-- Pagination Info with Card Totals -->
     <div class="bg-white rounded-lg shadow p-4 mb-6" v-if="pagination">
       <div class="flex items-center justify-between">
+        <!-- Left: Order range -->
         <div class="text-sm text-gray-600">
           Showing {{ (pagination.page * pagination.size) + 1 }} to {{ Math.min((pagination.page + 1) * pagination.size, pagination.total) }} of {{ pagination.total }} orders
         </div>
+
+        <!-- Center: Card totals -->
+        <div class="text-sm font-semibold text-blue-600">
+          🃏 {{ formatNumber(pagination.pageCardTotal) }} / {{ formatNumber(pagination.totalCards) }} cards
+        </div>
+
+        <!-- Right: Page number -->
         <div class="text-sm text-gray-600">
           Page {{ pagination.page + 1 }} of {{ pagination.totalPages }}
         </div>
@@ -219,7 +228,7 @@
       </div>
     </div>
 
-    <!-- Pagination -->
+    <!-- Pagination Controls -->
     <div v-if="pagination && pagination.totalPages > 1" class="bg-white rounded-lg shadow p-4 mt-6">
       <div class="flex items-center justify-between">
         <div class="flex items-center space-x-2">
@@ -350,11 +359,14 @@ const formatPrice = (price) => {
   return price ? price.toFixed(2) : '0.00'
 }
 
+const formatNumber = (num) => {
+  return num ? num.toLocaleString() : '0'
+}
+
 // Main load function
 const loadOrders = async (page = 0) => {
   loading.value = true
 
-    // Ajoutez ces logs pour déboguer
   console.log('Loading with filters:', {
     delai: filters.value.delai,
     status: filters.value.status,
@@ -364,10 +376,9 @@ const loadOrders = async (page = 0) => {
   try {
     const params = new URLSearchParams({
       page: page.toString(),
-      size: '100'
+      size: '500'
     })
 
-    // Vérifiez que les conditions fonctionnent
     if (filters.value.delai !== 'all') {
       console.log('Adding delai filter:', filters.value.delai)
       params.append('delai', filters.value.delai)
@@ -377,7 +388,6 @@ const loadOrders = async (page = 0) => {
       console.log('Adding status filter:', filters.value.status)
       params.append('status', filters.value.status)
     }
-
 
     if (filters.value.search.trim()) {
       params.append('search', filters.value.search.trim())
@@ -394,14 +404,14 @@ const loadOrders = async (page = 0) => {
       statistics.value = data.delaiDistribution || {}
       statusStatistics.value = data.statusStats || {}
 
-      console.log(`Loaded ${orders.value.length} orders`)
+      console.log(`✅ Loaded ${orders.value.length} orders - Page cards: ${pagination.value.pageCardTotal}, Total cards: ${pagination.value.totalCards}`)
 
     } else {
       throw new Error(`HTTP ${response.status}`)
     }
 
   } catch (error) {
-    console.error('Error loading orders:', error)
+    console.error('❌ Error loading orders:', error)
     orders.value = []
     pagination.value = null
     statusStatistics.value = null

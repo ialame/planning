@@ -125,25 +125,22 @@
                   Order #
                 </th>
                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Client Order #
-                </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
                 </th>
                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Priority
+                  Delai
                 </th>
                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Cards
                 </th>
                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Start Time
+                </th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  End Time
+                </th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Duration
-                </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total Price
-                </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Created
                 </th>
                 <th scope="col" class="relative px-6 py-3">
                   <span class="sr-only">Actions</span>
@@ -166,310 +163,145 @@
                     </div>
                   </td>
 
-                  <!-- Client Order Number -->
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm text-gray-900">
-                      {{ order.clientOrderNumber || order.num_commande_client || '-' }}
-                    </div>
-                  </td>
-
                   <!-- Status -->
                   <td class="px-6 py-4 whitespace-nowrap">
-            <span :class="[
-              'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-              getStatusColor(order.status || 'PENDING')
-            ]">
-              <span class="w-1.5 h-1.5 mr-1.5 rounded-full" :class="getStatusDotColor(order.status || 'PENDING')"></span>
-              {{ order.status || 'PENDING' }}
-            </span>
+          <span :class="[
+            'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+            getOrderStatusColor(order.orderStatus)
+          ]">
+            <span class="w-1.5 h-1.5 mr-1.5 rounded-full" :class="getOrderStatusDotColor(order.orderStatus)"></span>
+            {{ getOrderStatusText(order.orderStatus) }}
+          </span>
                   </td>
 
-                  <!-- Priority -->
+                  <!-- Delai (Priority) -->
                   <td class="px-6 py-4 whitespace-nowrap">
-            <span :class="[
-              'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-              getPriorityColor(order.priority || 'MEDIUM')
-            ]">
-              {{ getPriorityIcon(order.priority || 'MEDIUM') }} {{ order.priority || 'MEDIUM' }}
-            </span>
+          <span :class="[
+            'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+            getDelaiColor(order.delai)
+          ]">
+            {{ getDelaiLabel(order.delai) }}
+          </span>
                   </td>
 
                   <!-- Card Count -->
                   <td class="px-6 py-4 whitespace-nowrap">
                     <div class="flex items-center">
                       <div class="text-sm font-medium text-gray-900">
-                        {{ order.cardCount || order.cardsWithName || order.totalCards || 0 }}
+                        {{ order.cardCount || 0 }}
                       </div>
                       <div class="text-xs text-gray-500 ml-1">cards</div>
                       <!-- Expand/Collapse indicator -->
                       <div
                         v-if="(order.cardCount || 0) > 0"
-                        class="ml-2 transition-transform duration-200"
-                        :class="{ 'rotate-90': order.showCards }"
+                        class="ml-2 cursor-pointer text-blue-600 hover:text-blue-800"
+                        @click="toggleOrderCards(order)"
                       >
-                        <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        <svg class="w-4 h-4" :class="{ 'transform rotate-180': order.showCards }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                         </svg>
                       </div>
+                    </div>
+                  </td>
+
+                  <!-- Start Time -->
+                  <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="text-sm text-gray-900">
+                      {{ formatTime(order.startTime) }}
+                    </div>
+                    <div class="text-xs text-gray-500">
+                      {{ order.planningDate || selectedDate }}
+                    </div>
+                  </td>
+
+                  <!-- End Time -->
+                  <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="text-sm text-gray-900">
+                      {{ formatTime(order.endTime) }}
+                    </div>
+                    <div class="text-xs text-gray-500">
+                      Est. {{ formatDuration(order.durationMinutes || order.estimatedDuration || 0) }}
                     </div>
                   </td>
 
                   <!-- Duration -->
                   <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm text-gray-900">
-                      {{ formatDuration(order.estimatedDuration || order.durationMinutes || (order.cardCount || 0) * 3) }}
-                    </div>
-                    <div class="text-xs text-gray-500">
-                      (~{{ Math.ceil((order.estimatedDuration || order.durationMinutes || (order.cardCount || 0) * 3) / 60) }}h)
-                    </div>
-                  </td>
-
-                  <!-- Total Price -->
-                  <td class="px-6 py-4 whitespace-nowrap">
                     <div class="text-sm font-medium text-gray-900">
-                      {{ formatPrice(order.totalPrice || order.prix_total || 0) }}
+                      {{ formatDuration(order.durationMinutes || order.estimatedDuration || (order.cardCount * 3)) }}
+                    </div>
+                    <div class="text-xs text-gray-500">
+                      {{ order.cardCount || 0 }} × 3min
                     </div>
                   </td>
 
-                  <!-- Created Date -->
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm text-gray-900">
-                      {{ formatDate(order.creationDate || order.date) }}
-                    </div>
-                    <div class="text-xs text-gray-500">
-                      {{ formatTimeAgo(order.creationDate || order.date) }}
-                    </div>
-                  </td>
 
                   <!-- Actions -->
                   <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div class="flex items-center space-x-2">
-                      <button
-                        @click="toggleOrderCards(order)"
-                        class="text-blue-600 hover:text-blue-900 transition-colors p-1 rounded"
-                        :class="{ 'bg-blue-100': order.showCards }"
-                        title="View Cards"
-                      >
-                        <div class="flex items-center space-x-1">
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                          </svg>
-                          <span v-if="order.loadingCards" class="text-xs">...</span>
-                        </div>
+                    <button
+                      @click="viewOrderDetails(order)"
+                      class="text-blue-600 hover:text-blue-900 mr-3"
+                    >
+                      View
+                    </button>
+                    <button
+                      v-if="order.status !== 'COMPLETED'"
+                      @click="startOrder(order)"
+                      class="text-green-600 hover:text-green-900"
+                    >
+                      Start
                       </button>
-                      <button
-                        @click="startOrder(order)"
-                        class="text-green-600 hover:text-green-900 transition-colors p-1 rounded"
-                        title="Start Processing"
-                      >
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293H15M9 10v4a2 2 0 002 2h2a2 2 0 002-2v-4M9 10V9a2 2 0 012-2h2a2 2 0 012 2v1.01"></path>
-                        </svg>
-                      </button>
-                    </div>
                   </td>
                 </tr>
 
                 <!-- ✅ EXPANDABLE CARDS ROW -->
+
+                <!-- Expanded Cards Section -->
                 <tr v-if="order.showCards" class="bg-gray-50">
-                  <td colspan="9" class="px-6 py-0">
-                    <!-- Sliding animation container -->
-                    <div
-                      class="overflow-hidden transition-all duration-500 ease-in-out"
-                      :class="{
-                'max-h-96 opacity-100 py-4': order.showCards && !order.loadingCards,
-                'max-h-0 opacity-0 py-0': !order.showCards || order.loadingCards
-              }"
-                    >
-                      <!-- Loading State -->
-                      <div v-if="order.loadingCards" class="flex items-center justify-center py-8">
-                        <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
-                        <span class="text-gray-600">Loading cards...</span>
-                      </div>
+                  <td colspan="8" class="px-6 py-4">
+                    <!-- Loading cards -->
+                    <div v-if="order.loadingCards" class="text-center py-4">
+                      <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
+                      <p class="text-sm text-gray-600 mt-2">Loading cards...</p>
+                    </div>
 
-
-                      <!-- Cards Display -->
-                      <div v-else-if="order.cards && order.cards.length > 0">
-                        <!-- Cards Header -->
-                        <div class="flex items-center justify-between mb-4">
-                          <h4 class="text-sm font-medium text-gray-900">
-                            📋 Order Cards ({{ order.cards.length }})
-                          </h4>
-                          <button
-                            @click="order.showCards = false"
-                            class="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors"
-                            title="Close"
-                          >
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                            </svg>
-                          </button>
-                        </div>
-
-                        <!-- ✅ RESPONSIVE CARDS GRID -->
-                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-h-80 overflow-y-auto">
-                          <div
-                            v-for="card in order.cards"
-                            :key="card.id"
-                            class="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 group"
-                          >
-                            <div class="p-4">
-                              <!-- Card Header with Icon -->
-                              <div class="flex items-start justify-between mb-3">
-                                <div class="flex items-start space-x-2 flex-1 min-w-0">
-                                  <!-- Card Type Icon -->
-                                  <div class="flex-shrink-0">
-                                    <div class="w-8 h-8 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-lg flex items-center justify-center">
-                                      <span class="text-white text-xs font-bold">🃏</span>
-                                    </div>
-                                  </div>
-
-                                  <!-- Card Info -->
-                                  <div class="flex-1 min-w-0">
-                                    <h5 class="text-sm font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
-                                      {{ card.name || `Card #${card.code_barre}` }}
-                                    </h5>
-                                    <p class="text-xs text-gray-500 mt-1 line-clamp-2">
-                                      {{ card.label_name || card.code_barre }}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <!-- Status Badge -->
-                                <div class="flex-shrink-0 ml-2">
-            <span class="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
-              ✅ Ready
-            </span>
-                                </div>
+                    <!-- Cards list -->
+                    <div v-else-if="order.cards && order.cards.length > 0" class="space-y-2">
+                      <h4 class="font-semibold text-gray-900 mb-3">📋 Cards in this order ({{ order.cards.length }})</h4>
+                      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div
+                          v-for="(card, idx) in order.cards"
+                          :key="card.id || idx"
+                          class="bg-white p-3 rounded border border-gray-200 hover:shadow-sm transition-shadow"
+                        >
+                          <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                              <div class="font-medium text-gray-900">
+                                {{ card.name || card.label_name || `Card #${idx + 1}` }}
                               </div>
-
-                              <!-- Card Details Grid -->
-                              <div class="space-y-2">
-                                <!-- Barcode -->
-                                <div class="flex items-center justify-between py-1">
-            <span class="text-xs text-gray-500 flex items-center">
-              <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-              </svg>
-              Code
-            </span>
-                                  <span class="font-mono text-xs text-gray-900 bg-gray-100 px-2 py-1 rounded">
-              {{ card.code_barre || '-' }}
-            </span>
-                                </div>
-
-                                <!-- Duration -->
-                                <div class="flex items-center justify-between py-1">
-            <span class="text-xs text-gray-500 flex items-center">
-              <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
-              Time
-            </span>
-                                  <span class="text-xs font-medium text-blue-600">
-              {{ card.duration || 3 }} min
-            </span>
-                                </div>
-
-                                <!-- Amount (if exists) -->
-                                <div v-if="card.amount && card.amount > 0" class="flex items-center justify-between py-1">
-            <span class="text-xs text-gray-500 flex items-center">
-              <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
-              </svg>
-              Value
-            </span>
-                                  <span class="text-xs font-semibold text-green-600">
-              {{ formatPrice(card.amount) }}
-            </span>
-                                </div>
-                              </div>
-
-                              <!-- Card Actions -->
-                              <div class="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center">
-                                <button class="text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline transition-all">
-                                  View Details
-                                </button>
-
-                                <!-- Quick Actions -->
-                                <div class="flex space-x-1">
-                                  <button
-                                    class="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-all"
-                                    title="Mark as processed"
-                                  >
-                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                                    </svg>
-                                  </button>
-                                  <button
-                                    class="p-1 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded transition-all"
-                                    title="Add note"
-                                  >
-                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                                    </svg>
-                                  </button>
-                                </div>
+                              <div class="text-xs text-gray-500 mt-1">
+                                Code: {{ card.code_barre || 'N/A' }}
                               </div>
                             </div>
-
-                            <!-- Hover effect overlay -->
-                            <div class="absolute inset-0 bg-blue-50 opacity-0 group-hover:opacity-10 rounded-lg transition-opacity pointer-events-none"></div>
-                          </div>
-                        </div>
-
-                        <!-- Cards Summary Footer -->
-                        <div class="mt-4 pt-4 border-t border-gray-200 bg-gray-50 -mx-6 -mb-4 px-6 py-3 rounded-b-lg">
-                          <div class="flex flex-wrap items-center justify-between text-xs text-gray-600 gap-2">
-                            <div class="flex items-center space-x-4">
-        <span class="flex items-center">
-          <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-          </svg>
-          {{ order.cards.length }} cards
-        </span>
-                              <span class="flex items-center">
-          <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-          </svg>
-          {{ formatDuration(order.cards.reduce((sum, card) => sum + (card.duration || 3), 0)) }}
-        </span>
-                            </div>
-
-                            <div class="flex items-center space-x-2">
-                              <!-- Progress indicator -->
-                              <div class="flex items-center space-x-1">
-                                <div class="w-2 h-2 bg-green-400 rounded-full"></div>
-                                <span>{{ Math.floor(Math.random() * order.cards.length) }} processed</span>
+                            <div class="ml-2 text-right">
+                              <div class="text-xs font-medium text-blue-600">
+                                ~{{ card.duration || 3 }}min
                               </div>
-
-                              <!-- Collapse button -->
-                              <button
-                                @click="order.showCards = false"
-                                class="text-gray-500 hover:text-gray-700 text-xs underline ml-3"
-                              >
-                                Collapse ↑
-                              </button>
                             </div>
                           </div>
                         </div>
                       </div>
+                    </div>
 
-                      <!-- Empty State -->
-                      <div v-else class="text-center py-6 text-gray-500">
-                        <svg class="mx-auto h-8 w-8 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
-                        </svg>
-                        <p class="text-sm">No cards found for this order</p>
-                      </div>
+                    <!-- No cards -->
+                    <div v-else class="text-center py-4 text-gray-500">
+                      No card details available
                     </div>
                   </td>
                 </tr>
               </template>
               </tbody>
             </table>
-
+          </div>
             <!-- Table Footer with Summary -->
             <div class="bg-gray-50 px-6 py-3 border-t border-gray-200">
               <div class="flex justify-between items-center">
@@ -499,7 +331,7 @@
       </div>
 
     </div>
-  </div>
+
 </template>
 
 <script setup lang="ts">
@@ -1031,9 +863,115 @@ const handleKeydown = (event: KeyboardEvent) => {
   }
 }
 
+
+/**
+ * Format time from datetime string (HH:MM format)
+ */
+const formatTime = (datetime) => {
+  if (!datetime) return 'N/A'
+
+  try {
+    // If it's already in HH:MM format
+    if (typeof datetime === 'string' && datetime.match(/^\d{2}:\d{2}$/)) {
+      return datetime
+    }
+
+    // If it's a full datetime string
+    const date = new Date(datetime)
+    if (isNaN(date.getTime())) return 'N/A'
+
+    return date.toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  } catch (e) {
+    return 'N/A'
+  }
+}
+
+/**
+ * Get color classes for order status (from order table, not planning)
+ */
+const getOrderStatusColor = (status) => {
+  // Status from order table: 1=A_RECEPTIONNER, 2=A_NOTER, 3=A_CERTIFIER, etc.
+  switch (parseInt(status)) {
+    case 1: return 'bg-blue-100 text-blue-800'      // A_RECEPTIONNER
+    case 2: return 'bg-yellow-100 text-yellow-800'  // A_NOTER
+    case 3: return 'bg-purple-100 text-purple-800'  // A_CERTIFIER
+    case 4: return 'bg-orange-100 text-orange-800'  // A_PREPARER
+    case 5: return 'bg-green-100 text-green-800'    // ENVOYEE
+    case 8: return 'bg-gray-100 text-gray-800'      // RECU
+    default: return 'bg-gray-100 text-gray-800'
+  }
+}
+
+/**
+ * Get dot color for order status
+ */
+const getOrderStatusDotColor = (status) => {
+  switch (parseInt(status)) {
+    case 1: return 'bg-blue-600'
+    case 2: return 'bg-yellow-600'
+    case 3: return 'bg-purple-600'
+    case 4: return 'bg-orange-600'
+    case 5: return 'bg-green-600'
+    case 8: return 'bg-gray-600'
+    default: return 'bg-gray-600'
+  }
+}
+
+/**
+ * Get text for order status
+ */
+const getOrderStatusText = (status) => {
+  switch (parseInt(status)) {
+    case 1: return 'To Receive'
+    case 2: return 'To Note'
+    case 3: return 'To Certify'
+    case 4: return 'To Prepare'
+    case 5: return 'Sent'
+    case 8: return 'Received'
+    default: return 'Unknown'
+  }
+}
+
+/**
+ * Get color classes for delai
+ */
+const getDelaiColor = (delai) => {
+  if (!delai) return 'bg-gray-100 text-gray-800'
+
+  switch (delai.toUpperCase()) {
+    case 'X': return 'bg-red-100 text-red-800'
+    case 'F+': return 'bg-orange-100 text-orange-800'
+    case 'F': return 'bg-yellow-100 text-yellow-800'
+    case 'C':
+    case 'E': return 'bg-green-100 text-green-800'
+    default: return 'bg-gray-100 text-gray-800'
+  }
+}
+
+/**
+ * Get label for delai
+ */
+const getDelaiLabel = (delai) => {
+  if (!delai) return 'Unknown'
+
+  switch (delai.toUpperCase()) {
+    case 'X': return '🔴 Excelsior'
+    case 'F+': return '🟠 Fast+'
+    case 'F': return '🟡 Fast'
+    case 'C': return '🟢 Classic'
+    case 'E': return '🟢 Economy'
+    default: return delai
+  }
+}
+
+
+
 // ========== LIFECYCLE HOOKS ==========
 
-import { onMounted, onUnmounted } from 'vue'
+import { onUnmounted } from 'vue'
 
 onMounted(() => {
   // Add keyboard event listener

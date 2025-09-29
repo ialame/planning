@@ -1056,6 +1056,32 @@ const generatePlanningWithGreedy = async () => {
   }
 }
 
+
+const generateRoleBasedPlanning = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/planning/generate-role-based`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        planningDate: '2025-06-01',
+        cleanFirst: true
+      })
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      console.log('✅ Planning generated:', result.message);
+      console.log('Orders assigned:', result.totalOrdersAssigned);
+      console.log('Noteurs:', result.noteurWorkloads);
+      console.log('Certificateurs:', result.certificateurWorkloads);
+    } else {
+      console.error('❌ Planning failed:', result.message);
+    }
+  } catch (error) {
+    console.error('Error:', error);
+  }
+}
 // Remplacer temporairement generatePlanning par cette version
 // ou ajouter un nouveau bouton pour tester
 

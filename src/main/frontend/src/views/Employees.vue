@@ -95,20 +95,45 @@
     <div v-if="!selectedEmployeeId">
 
       <!-- ✅ MANAGEMENT VIEW -->
-      <!-- ✅ EMPLOYEES MANAGEMENT VIEW (Normal employee cards) -->
-      <div v-if="currentView === 'management'" class="space-y-6">
-        <!-- Header -->
-        <div class="bg-white rounded-lg shadow-sm border p-6">
-          <div class="flex justify-between items-center mb-4">
-            <h2 class="text-lg font-semibold text-gray-900">👥 Employee Management</h2>
-            <button
-              @click="showAddForm = true"
-              class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            >
-              + Add Employee
+      <div v-if="currentView === 'management'" class="bg-white rounded-lg shadow-md overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-semibold text-gray-900">Team Members</h2>
+            <button @click="showAddForm = !showAddForm" class="btn-primary">
+              {{ showAddForm ? 'Cancel' : '+ Add Employee' }}
             </button>
           </div>
         </div>
+
+        <!-- Add Employee Form -->
+        <div v-if="showAddForm" class="p-6 bg-gray-50 border-b">
+          <form @submit.prevent="addEmployee" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <input
+              v-model="newEmployee.firstName"
+              placeholder="First Name"
+              class="input-field"
+              required
+            >
+            <input
+              v-model="newEmployee.lastName"
+              placeholder="Last Name"
+              class="input-field"
+              required
+            >
+            <input
+              v-model="newEmployee.email"
+              type="email"
+              placeholder="Email"
+              class="input-field"
+              required
+            >
+            <div class="flex space-x-2">
+              <button type="submit" class="btn-primary flex-1">Add</button>
+              <button type="button" @click="showAddForm = false" class="btn-secondary">Cancel</button>
+            </div>
+          </form>
+        </div>
+
 
         <!-- Employee Cards Grid (NORMAL FORMAT) -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

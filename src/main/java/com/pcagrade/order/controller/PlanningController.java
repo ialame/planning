@@ -2,6 +2,7 @@ package com.pcagrade.order.controller;
 
 import com.pcagrade.order.service.EmployeeService;
 import com.pcagrade.order.service.GreedyPlanningService;
+import com.pcagrade.order.service.ImprovedPlanningService;
 import com.pcagrade.order.service.PlanningService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -36,10 +37,13 @@ public class PlanningController {
     @Autowired
     private GreedyPlanningService greedyPlanningService; // Alternative
 
+    @Autowired
+    private ImprovedPlanningService improvedPlanningService;
+
     /**
      * 🎯 ENDPOINT PRINCIPAL - Utilise PlanningService existant
      */
-    @PostMapping("/generate")
+    @PostMapping("/ex-generate")
     public ResponseEntity<Map<String, Object>> generatePlanning(@RequestBody Map<String, Object> request) {
         Map<String, Object> result = new HashMap<>();
 
@@ -256,94 +260,6 @@ public class PlanningController {
         }
     }
 
-    /**
-     * 🔍 DIAGNOSTIC - Analyser les services disponibles
-     */
-    @GetMapping("/debug")
-    public ResponseEntity<Map<String, Object>> debugPlanning(
-            @RequestParam(defaultValue = "2025-07-01") String startDate) {
-
-        Map<String, Object> debug = new HashMap<>();
-
-        try {
-            log.info("🔍 DIAGNOSTIC - Services and data analysis");
-
-            // ========== CHECK EMPLOYEES ==========
-            List<Map<String, Object>> employees = employeeService.getAllActiveEmployees();
-            debug.put("activeEmployees", employees.size());
-            debug.put("employees", employees.stream().limit(3).toList());
-
-            // ========== CHECK ORDERS ==========
-            String orderQuery = """
-                SELECT 
-                    HEX(o.id) as orderId,
-                    o.num_commande as orderNumber,
-                    o.date as orderDate,
-                    COALESCE(o.priority, 'MEDIUM') as priority,
-                    COALESCE(o.status, 1) as status
-                FROM `order` o
-                WHERE o.date >= ?
-                ORDER BY o.date ASC
-                LIMIT 10
-            """;
-
-            Query query = entityManager.createNativeQuery(orderQuery);
-            query.setParameter(1, startDate);
-            @SuppressWarnings("unchecked")
-            List<Object[]> orderResults = query.getResultList();
-
-            debug.put("ordersFromDate", orderResults.size());
-            debug.put("sampleOrders", orderResults.stream().limit(3).map(row -> {
-                Map<String, Object> order = new HashMap<>();
-                order.put("orderId", row[0]);
-                order.put("orderNumber", row[1]);
-                order.put("orderDate", row[2]);
-                order.put("priority", row[3]);
-                order.put("status", row[4]);
-                return order;
-            }).toList());
-
-            // ========== CHECK EXISTING PLANNINGS ==========
-            Query planningCountQ = entityManager.createNativeQuery("SELECT COUNT(*) FROM j_planning");
-            Number planningCount = (Number) planningCountQ.getSingleResult();
-            debug.put("existingPlannings", planningCount.intValue());
-
-            // ========== SERVICE AVAILABILITY ==========
-            Map<String, Object> services = new HashMap<>();
-            services.put("planningService", planningService != null ? "AVAILABLE" : "NOT_INJECTED");
-            services.put("greedyPlanningService", greedyPlanningService != null ? "AVAILABLE" : "NOT_INJECTED");
-            services.put("employeeService", employeeService != null ? "AVAILABLE" : "NOT_INJECTED");
-            debug.put("services", services);
-
-            // ========== SUMMARY ==========
-            debug.put("success", true);
-            debug.put("analysis", Map.of(
-                    "startDate", startDate,
-                    "ordersAvailable", orderResults.size(),
-                    "employeesAvailable", employees.size(),
-                    "existingPlannings", planningCount.intValue(),
-                    "servicesInjected", services.values().stream().allMatch(v -> "AVAILABLE".equals(v))
-            ));
-
-            List<String> recommendations = new ArrayList<>();
-            if (orderResults.isEmpty()) {
-                recommendations.add("❌ No orders found from date " + startDate);
-            } else if (employees.isEmpty()) {
-                recommendations.add("❌ No employees available");
-            } else {
-                recommendations.add("✅ " + orderResults.size() + " orders and " + employees.size() + " employees available");
-            }
-            debug.put("recommendations", recommendations);
-
-            return ResponseEntity.ok(debug);
-
-        } catch (Exception e) {
-            log.error("❌ Debug failed: {}", e.getMessage(), e);
-            debug.put("success", false);
-            debug.put("error", e.getMessage());
-            return ResponseEntity.ok(debug);
-        }
-    }
 
     /**
      * 📋 GET ALL PLANNINGS - Récupère tous les plannings
@@ -478,9 +394,9 @@ public class PlanningController {
             """;
 
             // ✅ FIXED: Add date filter with proper spacing
-            if (date != null) {
-                sql += " AND DATE(p.planning_date) = ? ";
-            }
+            //if (date != null) {
+            //    sql += " AND DATE(p.planning_date) = ? ";
+           // }
 
             // ✅ FIXED: Add ORDER BY with proper spacing
             sql += " ORDER BY p.start_time ASC";
@@ -489,9 +405,10 @@ public class PlanningController {
 
             Query query = entityManager.createNativeQuery(sql);
             query.setParameter(1, employeeId.toUpperCase());
-            if (date != null) {
-                query.setParameter(2, LocalDate.parse(date));
-            }
+
+            //if (date != null) {
+            //    query.setParameter(2, LocalDate.parse(date));
+            //}
 
             @SuppressWarnings("unchecked")
             List<Object[]> results = query.getResultList();
@@ -1269,5 +1186,61 @@ public class PlanningController {
         }
     }
 
+
+    /**
+     * 🎯 GENERATE ROLE-BASED PLANNING
+     * Assigns orders based on status and employee roles:
+     * - A_NOTER (status=2) → ROLE_NOTEUR
+     * - A_CERTIFIER (status=3) → ROLE_CERTIFICATEUR
+     *
+     * POST /api/planning/generate-role-based
+     *
+     * Request Body:
+     * {
+     *   "planningDate": "2025-06-01",  // Date to schedule work
+     *   "cleanFirst": true             // Clean existing planning for this date
+     * }
+     */
+    //@PostMapping("/generate-role-based") c'etait avant
+    @PostMapping("/generate")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> generateRoleBasedPlanning(
+            @RequestBody Map<String, Object> request) {
+
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            // Extract parameters
+            String planningDateStr = (String) request.getOrDefault("planningDate",
+                    LocalDate.now().toString());
+            boolean cleanFirst = (Boolean) request.getOrDefault("cleanFirst", true);
+
+            LocalDate planningDate = LocalDate.parse(planningDateStr);
+
+            log.info("🎯 Generating role-based planning for date: {}, cleanFirst: {}",
+                    planningDate, cleanFirst);
+
+            // Execute the improved planning service
+
+            result = improvedPlanningService.executeRoleBasedPlanning(planningDate, cleanFirst);
+
+            if ((Boolean) result.get("success")) {
+                log.info("✅ Role-based planning successful: {}", result.get("message"));
+                return ResponseEntity.ok(result);
+            } else {
+                log.warn("⚠️ Role-based planning failed: {}", result.get("message"));
+                return ResponseEntity.status(500).body(result);
+            }
+
+        } catch (Exception e) {
+            log.error("❌ Error in role-based planning generation", e);
+
+            result.put("success", false);
+            result.put("message", "Role-based planning failed: " + e.getMessage());
+            result.put("error", e.getClass().getSimpleName());
+
+            return ResponseEntity.internalServerError().body(result);
+        }
+    }
 
 }
