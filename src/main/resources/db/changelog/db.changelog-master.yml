@@ -1,10 +1,14 @@
+# ============================================================
+# CHANGELOG AVEC LES VRAIS STATUS DE COMMANDES
+# FILE: src/main/resources/db/changelog/db.changelog-master.yml
+# ============================================================
+
 databaseChangeLog:
   - changeSet:
-      id: 001-create-planning-tables
+      id: 001-create-employee-table
       author: pokemon-card-planning
-      comment: Create planning tables (j_employee and j_planning)
+      comment: Create j_employee table
       changes:
-        # Create j_employee table
         - sql:
             sql: |
               CREATE TABLE IF NOT EXISTS j_employee (
@@ -23,7 +27,11 @@ databaseChangeLog:
                 INDEX idx_employee_name (last_name, first_name)
               ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-        # Create j_planning table
+  - changeSet:
+      id: 002-create-planning-table-real-status
+      author: pokemon-card-planning
+      comment: Create j_planning table with REAL order status values
+      changes:
         - sql:
             sql: |
               CREATE TABLE IF NOT EXISTS j_planning (
@@ -34,194 +42,48 @@ databaseChangeLog:
                 start_time DATETIME NOT NULL,
                 end_time DATETIME,
                 estimated_duration_minutes INT NOT NULL DEFAULT 0,
-                priority ENUM('URGENT', 'HIGH', 'MEDIUM', 'LOW') DEFAULT 'MEDIUM',
-                status ENUM('SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED') DEFAULT 'SCHEDULED',
+              
+                -- ✅ delai: X, F+, F, C, E
+                delai VARCHAR(10) NOT NULL DEFAULT 'C',
+              
+                -- ✅ status: REAL order status (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 41, 42)
+                -- Default: 2 (A_NOTER) for initial planning
+                status INT NOT NULL DEFAULT 2,
+              
                 completed BOOLEAN DEFAULT FALSE,
                 estimated_card_count INT DEFAULT 25,
                 actual_card_count INT DEFAULT NULL,
+                card_count INT DEFAULT 0,
                 notes TEXT,
                 progress_percentage INT DEFAULT 0,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               
-                FOREIGN KEY (order_id) REFERENCES `order`(id) ON DELETE CASCADE,
                 FOREIGN KEY (employee_id) REFERENCES j_employee(id) ON DELETE CASCADE,
               
                 INDEX idx_planning_date (planning_date),
                 INDEX idx_planning_employee (employee_id),
                 INDEX idx_planning_order (order_id),
                 INDEX idx_planning_status (status),
+                INDEX idx_planning_delai (delai),
                 INDEX idx_planning_start_time (start_time),
                 INDEX idx_planning_order_employee (order_id, employee_id),
-                INDEX idx_planning_date_status (planning_date, status)
+                INDEX idx_planning_date_status (planning_date, status),
+                INDEX idx_planning_employee_date (employee_id, planning_date),
+                INDEX idx_planning_employee_time (employee_id, planning_date, start_time),
+              
+                CONSTRAINT chk_delai_values CHECK (delai IN ('X', 'F+', 'F', 'C', 'E')),
+                CONSTRAINT chk_status_values CHECK (status IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 41, 42)),
+                CONSTRAINT chk_progress_range CHECK (progress_percentage >= 0 AND progress_percentage <= 100)
               ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
   - changeSet:
-      id: 002-fix-card-image-constraints
+      id: 003-create-order-status-mapping
       author: pokemon-card-planning
-      comment: Fix card_image foreign key constraints only
+      comment: Create mapping table for REAL order status values
       changes:
-        # Temporarily disable foreign key checks
-        - sql:
-            sql: SET FOREIGN_KEY_CHECKS = 0;
-
-        # Drop existing problematic foreign key in card_image (if exists)
-        - sql:
-            sql: |
-              SET @constraint_exists = (
-                SELECT COUNT(*) 
-                FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
-                WHERE CONSTRAINT_NAME = 'FK_FD09F5994ACC9A20' 
-                AND TABLE_SCHEMA = DATABASE()
-              );
-              
-              SET @sql = IF(@constraint_exists > 0, 
-                'ALTER TABLE card_image DROP FOREIGN KEY FK_FD09F5994ACC9A20', 
-                'SELECT "No constraint to drop" as result'
-              );
-              
-              PREPARE stmt FROM @sql;
-              EXECUTE stmt;
-              DEALLOCATE PREPARE stmt;
-
-        # Ensure card_image.card_id matches the card.id type (only if table exists)
-        - sql:
-            sql: |
-              SET @table_exists = (
-                SELECT COUNT(*) 
-                FROM INFORMATION_SCHEMA.TABLES 
-                WHERE TABLE_SCHEMA = DATABASE() 
-                AND TABLE_NAME = 'card_image'
-              );
-              
-              SET @sql = IF(@table_exists > 0, 
-                'ALTER TABLE card_image MODIFY COLUMN card_id BINARY(16)', 
-                'SELECT "card_image table does not exist" as result'
-              );
-              
-              PREPARE stmt FROM @sql;
-              EXECUTE stmt;
-              DEALLOCATE PREPARE stmt;
-
-        # Re-create the foreign key constraint (only if both tables exist)
-        - sql:
-            sql: |
-              SET @card_exists = (
-                SELECT COUNT(*) 
-                FROM INFORMATION_SCHEMA.TABLES 
-                WHERE TABLE_SCHEMA = DATABASE() 
-                AND TABLE_NAME = 'card'
-              );
-              
-              SET @card_image_exists = (
-                SELECT COUNT(*) 
-                FROM INFORMATION_SCHEMA.TABLES 
-                WHERE TABLE_SCHEMA = DATABASE() 
-                AND TABLE_NAME = 'card_image'
-              );
-              
-              SET @sql = IF(@card_exists > 0 AND @card_image_exists > 0, 
-                'ALTER TABLE card_image ADD CONSTRAINT FK_card_image_card_id FOREIGN KEY (card_id) REFERENCES card(id) ON DELETE CASCADE ON UPDATE CASCADE', 
-                'SELECT "Cannot create FK - tables missing" as result'
-              );
-              
-              PREPARE stmt FROM @sql;
-              EXECUTE stmt;
-              DEALLOCATE PREPARE stmt;
-
-        # Re-enable foreign key checks
-        - sql:
-            sql: SET FOREIGN_KEY_CHECKS = 1;
-
-  - changeSet:
-      id: 003-add-test-employees
-      author: pokemon-card-planning
-      comment: Add test employees for planning
-      changes:
-        # Insert test employees with proper ULID IDs
-        - sql:
-            sql: |
-              INSERT IGNORE INTO j_employee 
-              (id, first_name, last_name, email, work_hours_per_day, active, efficiency_rating, creation_date, modification_date)
-              VALUES
-              (UNHEX(REPLACE(UUID(), '-', '')), 'Jean', 'Martin', 'jean.martin@pokemon.com', 8, 1, 1.00, NOW(), NOW()),
-              (UNHEX(REPLACE(UUID(), '-', '')), 'Marie', 'Dubois', 'marie.dubois@pokemon.com', 8, 1, 1.10, NOW(), NOW()),
-              (UNHEX(REPLACE(UUID(), '-', '')), 'Pierre', 'Durand', 'pierre.durand@pokemon.com', 7, 1, 0.95, NOW(), NOW()),
-              (UNHEX(REPLACE(UUID(), '-', '')), 'Sophie', 'Moreau', 'sophie.moreau@pokemon.com', 8, 1, 1.05, NOW(), NOW()),
-              (UNHEX(REPLACE(UUID(), '-', '')), 'Lucas', 'Bernard', 'lucas.bernard@pokemon.com', 6, 1, 1.15, NOW(), NOW());
-
-  - changeSet:
-      id: 004-create-compatibility-views-real
-      author: pokemon-card-planning
-      comment: Create views for order status compatibility - REAL column mapping
-      changes:
-        # Create a view that maps the REAL order table structure to planning needs
-        - sql:
-            sql: |
-              SET @order_exists = (
-                SELECT COUNT(*) 
-                FROM INFORMATION_SCHEMA.TABLES 
-                WHERE TABLE_SCHEMA = DATABASE() 
-                AND TABLE_NAME = 'order'
-              );
-              
-              SET @sql = IF(@order_exists > 0, 
-                'CREATE OR REPLACE VIEW v_order_planning AS
-                 SELECT 
-                   id,
-                   num_commande as order_number,
-                   num_commande_client as client_order_number,
-                   date as order_date,
-                   status as status_value,
-                   CASE 
-                     WHEN status = 0 THEN ''PENDING''
-                     WHEN status = 1 THEN ''SCHEDULED''
-                     WHEN status = 2 THEN ''IN_PROGRESS''
-                     WHEN status = 3 THEN ''COMPLETED''
-                     WHEN status = 4 THEN ''CANCELLED''
-                     ELSE ''PENDING''
-                   END as status_name,
-                   delai as deadline_info,
-                   CASE 
-                     WHEN retard = 1 THEN ''URGENT''
-                     WHEN delai LIKE ''%URGENT%'' THEN ''URGENT''
-                     WHEN delai LIKE ''%HIGH%'' THEN ''HIGH''
-                     WHEN delai LIKE ''%LOW%'' THEN ''LOW''
-                     ELSE ''MEDIUM''
-                   END as planning_priority,
-                   CASE 
-                     WHEN special_grades = 1 THEN 50
-                     ELSE 25
-                   END as estimated_card_count,
-                   CASE 
-                     WHEN special_grades = 1 THEN 150
-                     ELSE 75
-                   END as estimated_duration_minutes,
-                   customer_id,
-                   reference,
-                   langue as language_code,
-                   annulee as is_cancelled,
-                   paused as is_paused,
-                   retard as is_delayed,
-                   special_grades as has_special_grades,
-                   type as order_type
-                 FROM `order`
-                 WHERE annulee = 0', 
-                'SELECT "Order table does not exist - skipping view creation" as result'
-              );
-              
-              PREPARE stmt FROM @sql;
-              EXECUTE stmt;
-              DEALLOCATE PREPARE stmt;
-
-  - changeSet:
-      id: 005-create-status-mapping-table
-      author: pokemon-card-planning
-      comment: Create a mapping table for order status translations
-      changes:
-        # Create status mapping table
         - createTable:
-            tableName: order_status_mapping
+            tableName: j_order_status_mapping
             columns:
               - column:
                   name: status_value
@@ -230,160 +92,255 @@ databaseChangeLog:
                     primaryKey: true
                     nullable: false
               - column:
-                  name: status_name
-                  type: VARCHAR(20)
+                  name: status_code
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status_name_en
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status_name_fr
+                  type: VARCHAR(50)
                   constraints:
                     nullable: false
               - column:
                   name: status_description
-                  type: VARCHAR(100)
-                  constraints:
-                    nullable: false
+                  type: VARCHAR(200)
               - column:
-                  name: is_active
+                  name: is_planning_stage
                   type: BOOLEAN
-                  defaultValue: true
+                  defaultValueBoolean: false
                   constraints:
                     nullable: false
-
-        # Insert status mappings
+              - column:
+                  name: display_order
+                  type: INT
+                  constraints:
+                    nullable: false
+        
+        # Insert REAL order status mappings
         - insert:
-            tableName: order_status_mapping
+            tableName: j_order_status_mapping
             columns:
-              - column:
-                  name: status_value
-                  value: 0
-              - column:
-                  name: status_name
-                  value: PENDING
-              - column:
-                  name: status_description
-                  value: Order is waiting to be processed
-
-        - insert:
-            tableName: order_status_mapping
-            columns:
-              - column:
-                  name: status_value
-                  value: 1
-              - column:
-                  name: status_name
-                  value: SCHEDULED
-              - column:
-                  name: status_description
-                  value: Order has been scheduled for processing
+              - column: {name: status_value, valueNumeric: 1}
+              - column: {name: status_code, value: 'A_RECEPTIONNER'}
+              - column: {name: status_name_en, value: 'To be received'}
+              - column: {name: status_name_fr, value: 'À réceptionner'}
+              - column: {name: status_description, value: 'Order package waiting to be received'}
+              - column: {name: is_planning_stage, valueBoolean: false}
+              - column: {name: display_order, valueNumeric: 1}
 
         - insert:
-            tableName: order_status_mapping
+            tableName: j_order_status_mapping
             columns:
-              - column:
-                  name: status_value
-                  value: 2
-              - column:
-                  name: status_name
-                  value: IN_PROGRESS
-              - column:
-                  name: status_description
-                  value: Order is currently being processed
+              - column: {name: status_value, valueNumeric: 9}
+              - column: {name: status_code, value: 'COLIS_ACCEPTE'}
+              - column: {name: status_name_en, value: 'Package accepted'}
+              - column: {name: status_name_fr, value: 'Colis accepté'}
+              - column: {name: status_description, value: 'Package has been accepted'}
+              - column: {name: is_planning_stage, valueBoolean: false}
+              - column: {name: display_order, valueNumeric: 2}
 
         - insert:
-            tableName: order_status_mapping
+            tableName: j_order_status_mapping
             columns:
-              - column:
-                  name: status_value
-                  value: 3
-              - column:
-                  name: status_name
-                  value: COMPLETED
-              - column:
-                  name: status_description
-                  value: Order processing has been completed
+              - column: {name: status_value, valueNumeric: 10}
+              - column: {name: status_code, value: 'A_SCANNER'}
+              - column: {name: status_name_en, value: 'To be scanned'}
+              - column: {name: status_name_fr, value: 'À scanner'}
+              - column: {name: status_description, value: 'Cards need to be scanned'}
+              - column: {name: is_planning_stage, valueBoolean: true}
+              - column: {name: display_order, valueNumeric: 3}
 
         - insert:
-            tableName: order_status_mapping
+            tableName: j_order_status_mapping
             columns:
-              - column:
-                  name: status_value
-                  value: 4
-              - column:
-                  name: status_name
-                  value: CANCELLED
-              - column:
-                  name: status_description
-                  value: Order has been cancelled
+              - column: {name: status_value, valueNumeric: 11}
+              - column: {name: status_code, value: 'A_OUVRIR'}
+              - column: {name: status_name_en, value: 'To be opened'}
+              - column: {name: status_name_fr, value: 'À ouvrir'}
+              - column: {name: status_description, value: 'Package needs to be opened'}
+              - column: {name: is_planning_stage, valueBoolean: true}
+              - column: {name: display_order, valueNumeric: 4}
+
+        - insert:
+            tableName: j_order_status_mapping
+            columns:
+              - column: {name: status_value, valueNumeric: 2}
+              - column: {name: status_code, value: 'A_NOTER'}
+              - column: {name: status_name_en, value: 'To be graded'}
+              - column: {name: status_name_fr, value: 'À noter'}
+              - column: {name: status_description, value: 'Cards need to be graded (evaluation)'}
+              - column: {name: is_planning_stage, valueBoolean: true}
+              - column: {name: display_order, valueNumeric: 5}
+
+        - insert:
+            tableName: j_order_status_mapping
+            columns:
+              - column: {name: status_value, valueNumeric: 3}
+              - column: {name: status_code, value: 'A_CERTIFIER'}
+              - column: {name: status_name_en, value: 'To be encapsulated'}
+              - column: {name: status_name_fr, value: 'À certifier'}
+              - column: {name: status_description, value: 'Cards need to be encapsulated (certification)'}
+              - column: {name: is_planning_stage, valueBoolean: true}
+              - column: {name: display_order, valueNumeric: 6}
+
+        - insert:
+            tableName: j_order_status_mapping
+            columns:
+              - column: {name: status_value, valueNumeric: 4}
+              - column: {name: status_code, value: 'A_PREPARER'}
+              - column: {name: status_name_en, value: 'To be prepared'}
+              - column: {name: status_name_fr, value: 'À préparer'}
+              - column: {name: status_description, value: 'Order needs to be prepared for shipping'}
+              - column: {name: is_planning_stage, valueBoolean: true}
+              - column: {name: display_order, valueNumeric: 7}
+
+        - insert:
+            tableName: j_order_status_mapping
+            columns:
+              - column: {name: status_value, valueNumeric: 7}
+              - column: {name: status_code, value: 'A_DESCELLER'}
+              - column: {name: status_name_en, value: 'To be unsealed'}
+              - column: {name: status_name_fr, value: 'À desceller'}
+              - column: {name: status_description, value: 'Cards need to be unsealed'}
+              - column: {name: is_planning_stage, valueBoolean: true}
+              - column: {name: display_order, valueNumeric: 8}
+
+        - insert:
+            tableName: j_order_status_mapping
+            columns:
+              - column: {name: status_value, valueNumeric: 6}
+              - column: {name: status_code, value: 'A_VOIR'}
+              - column: {name: status_name_en, value: 'To be checked'}
+              - column: {name: status_name_fr, value: 'À voir'}
+              - column: {name: status_description, value: 'Order needs to be reviewed/checked'}
+              - column: {name: is_planning_stage, valueBoolean: true}
+              - column: {name: display_order, valueNumeric: 9}
+
+        - insert:
+            tableName: j_order_status_mapping
+            columns:
+              - column: {name: status_value, valueNumeric: 41}
+              - column: {name: status_code, value: 'A_DISTRIBUER'}
+              - column: {name: status_name_en, value: 'To be delivered'}
+              - column: {name: status_name_fr, value: 'À distribuer'}
+              - column: {name: status_description, value: 'Order ready to be delivered'}
+              - column: {name: is_planning_stage, valueBoolean: false}
+              - column: {name: display_order, valueNumeric: 10}
+
+        - insert:
+            tableName: j_order_status_mapping
+            columns:
+              - column: {name: status_value, valueNumeric: 42}
+              - column: {name: status_code, value: 'A_ENVOYER'}
+              - column: {name: status_name_en, value: 'To be sent'}
+              - column: {name: status_name_fr, value: 'À envoyer'}
+              - column: {name: status_description, value: 'Order ready to be sent'}
+              - column: {name: is_planning_stage, valueBoolean: false}
+              - column: {name: display_order, valueNumeric: 11}
+
+        - insert:
+            tableName: j_order_status_mapping
+            columns:
+              - column: {name: status_value, valueNumeric: 5}
+              - column: {name: status_code, value: 'ENVOYEE'}
+              - column: {name: status_name_en, value: 'Sent'}
+              - column: {name: status_name_fr, value: 'Envoyée'}
+              - column: {name: status_description, value: 'Order has been sent'}
+              - column: {name: is_planning_stage, valueBoolean: false}
+              - column: {name: display_order, valueNumeric: 12}
+
+        - insert:
+            tableName: j_order_status_mapping
+            columns:
+              - column: {name: status_value, valueNumeric: 8}
+              - column: {name: status_code, value: 'RECU'}
+              - column: {name: status_name_en, value: 'Received'}
+              - column: {name: status_name_fr, value: 'Reçu'}
+              - column: {name: status_description, value: 'Order has been received by customer'}
+              - column: {name: is_planning_stage, valueBoolean: false}
+              - column: {name: display_order, valueNumeric: 13}
 
   - changeSet:
-      id: 006-create-planning-helper-views
+      id: 004-create-delai-mapping-table
       author: pokemon-card-planning
-      comment: Create helper views for planning operations
+      comment: Create delai priority mapping table
       changes:
-        # View for employee workload calculation
-        - sql:
-            sql: |
-              CREATE OR REPLACE VIEW v_employee_workload AS
-              SELECT 
-                e.id as employee_id,
-                CONCAT(e.first_name, ' ', e.last_name) as employee_name,
-                e.work_hours_per_day,
-                e.efficiency_rating,
-                e.active,
-                COALESCE(SUM(CASE WHEN p.planning_date = CURDATE() AND p.status != 'CANCELLED' THEN p.estimated_duration_minutes ELSE 0 END), 0) as today_minutes,
-                COALESCE(SUM(CASE WHEN p.planning_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY) AND p.status != 'CANCELLED' THEN p.estimated_duration_minutes ELSE 0 END), 0) as week_minutes,
-                COUNT(CASE WHEN p.planning_date = CURDATE() AND p.status != 'CANCELLED' THEN 1 END) as today_orders,
-                COUNT(CASE WHEN p.planning_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY) AND p.status != 'CANCELLED' THEN 1 END) as week_orders
-              FROM j_employee e
-              LEFT JOIN j_planning p ON e.id = p.employee_id
-              WHERE e.active = 1
-              GROUP BY e.id, e.first_name, e.last_name, e.work_hours_per_day, e.efficiency_rating, e.active;
+        - createTable:
+            tableName: j_delai_priority_mapping
+            columns:
+              - column:
+                  name: delai_code
+                  type: VARCHAR(10)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: priority_name
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: priority_level
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: VARCHAR(200)
 
-        # View for order planning summary
-        - sql:
-            sql: |
-              CREATE OR REPLACE VIEW v_order_planning_summary AS
-              SELECT 
-                o.id as order_id,
-                o.order_number,
-                o.client_order_number,
-                o.order_date,
-                o.status_name,
-                o.planning_priority,
-                o.estimated_card_count,
-                o.estimated_duration_minutes,
-                COALESCE(p.id, NULL) as planning_id,
-                COALESCE(p.planning_date, NULL) as scheduled_date,
-                COALESCE(p.employee_id, NULL) as assigned_employee_id,
-                COALESCE(CONCAT(e.first_name, ' ', e.last_name), NULL) as assigned_employee_name,
-                COALESCE(p.status, 'UNSCHEDULED') as planning_status,
-                CASE 
-                  WHEN p.id IS NULL THEN 'UNSCHEDULED'
-                  WHEN p.status = 'SCHEDULED' THEN 'SCHEDULED'
-                  WHEN p.status = 'IN_PROGRESS' THEN 'IN_PROGRESS'
-                  WHEN p.status = 'COMPLETED' THEN 'COMPLETED'
-                  WHEN p.status = 'CANCELLED' THEN 'CANCELLED'
-                  ELSE 'UNKNOWN'
-                END as overall_status
-              FROM v_order_planning o
-              LEFT JOIN j_planning p ON o.id = p.order_id
-              LEFT JOIN j_employee e ON p.employee_id = e.id
-              WHERE o.is_cancelled = 0 AND o.is_paused = 0;
-# ========== CHANGELOG MINIMAL POUR GROUP ==========
-# Version simplifiée qui évite les problèmes de syntaxe MariaDB
+        - insert:
+            tableName: j_delai_priority_mapping
+            columns:
+              - column: {name: delai_code, value: 'X'}
+              - column: {name: priority_name, value: 'EXCELSIOR'}
+              - column: {name: priority_level, valueNumeric: 1}
+              - column: {name: description, value: 'Highest priority - Excelsior service'}
 
-#databaseChangeLog:
+        - insert:
+            tableName: j_delai_priority_mapping
+            columns:
+              - column: {name: delai_code, value: 'F+'}
+              - column: {name: priority_name, value: 'FAST_PLUS'}
+              - column: {name: priority_level, valueNumeric: 2}
+              - column: {name: description, value: 'High priority - Fast Plus service'}
+
+        - insert:
+            tableName: j_delai_priority_mapping
+            columns:
+              - column: {name: delai_code, value: 'F'}
+              - column: {name: priority_name, value: 'FAST'}
+              - column: {name: priority_level, valueNumeric: 3}
+              - column: {name: description, value: 'Medium priority - Fast service'}
+
+        - insert:
+            tableName: j_delai_priority_mapping
+            columns:
+              - column: {name: delai_code, value: 'C'}
+              - column: {name: priority_name, value: 'CLASSIC'}
+              - column: {name: priority_level, valueNumeric: 4}
+              - column: {name: description, value: 'Normal priority - Classic service'}
+
+        - insert:
+            tableName: j_delai_priority_mapping
+            columns:
+              - column: {name: delai_code, value: 'E'}
+              - column: {name: priority_name, value: 'ECONOMY'}
+              - column: {name: priority_level, valueNumeric: 5}
+              - column: {name: description, value: 'Low priority - Economy service'}
+
   - changeSet:
-      id: 003-create-group-tables-minimal
+      id: 005-create-group-tables
       author: pokemon-card-planning
-      comment: Create Group tables - minimal version
-      preConditions:
-        - onFail: MARK_RAN
-        - not:
-            - tableExists:
-                tableName: j_group
+      comment: Create Group tables
       changes:
-        # Create j_group table with name_upper column included from start
         - sql:
             sql: |
-              CREATE TABLE j_group (
+              CREATE TABLE IF NOT EXISTS j_group (
                 id BINARY(16) NOT NULL PRIMARY KEY,
                 name VARCHAR(50) NOT NULL UNIQUE,
                 name_upper VARCHAR(50) NULL,
@@ -394,17 +351,17 @@ databaseChangeLog:
                 modification_date DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               
                 INDEX idx_group_name (name),
+                INDEX idx_group_name_upper (name_upper),
                 INDEX idx_group_active (active),
                 INDEX idx_group_permission_level (permission_level),
               
                 CONSTRAINT chk_permission_level CHECK (permission_level >= 1 AND permission_level <= 10),
                 CONSTRAINT chk_group_name_not_empty CHECK (TRIM(name) != '')
-              );
+              ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-        # Create j_employee_group junction table
         - sql:
             sql: |
-              CREATE TABLE j_employee_group (
+              CREATE TABLE IF NOT EXISTS j_employee_group (
                 employee_id BINARY(16) NOT NULL,
                 group_id BINARY(16) NOT NULL,
               
@@ -414,24 +371,16 @@ databaseChangeLog:
                 INDEX idx_employee_group_group (group_id),
               
                 CONSTRAINT fk_employee_group_employee 
-                  FOREIGN KEY (employee_id) REFERENCES j_employee(id) ON DELETE CASCADE ON UPDATE CASCADE,
+                  FOREIGN KEY (employee_id) REFERENCES j_employee(id) ON DELETE CASCADE,
                 CONSTRAINT fk_employee_group_group 
-                  FOREIGN KEY (group_id) REFERENCES j_group(id) ON DELETE CASCADE ON UPDATE CASCADE
-              );
+                  FOREIGN KEY (group_id) REFERENCES j_group(id) ON DELETE CASCADE
+              ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
   - changeSet:
-      id: 004-setup-group-triggers-minimal
+      id: 006-setup-group-triggers
       author: pokemon-card-planning
-      comment: Setup triggers for name_upper maintenance
-      preConditions:
-        - onFail: MARK_RAN
-        - tableExists:
-            tableName: j_group
-        - sqlCheck:
-            expectedResult: 0
-            sql: SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema = DATABASE() AND trigger_name = 'tr_group_insert_name_upper'
+      comment: Setup triggers for groups
       changes:
-        # Create triggers to maintain name_upper (only if they don't exist)
         - sql:
             sql: |
               CREATE TRIGGER tr_group_insert_name_upper
@@ -449,187 +398,87 @@ databaseChangeLog:
                 SET NEW.modification_date = CURRENT_TIMESTAMP;
               END;
 
-        # Update existing records to set name_upper
-        - sql:
-            sql: UPDATE j_group SET name_upper = UPPER(name) WHERE name_upper IS NULL OR name_upper = '';
-
-        # Create unique index on name_upper for case-insensitive uniqueness (if not exists)
-        - sql:
-            sql: |
-              CREATE UNIQUE INDEX IF NOT EXISTS idx_group_name_upper ON j_group (name_upper);
-
   - changeSet:
-      id: 005-insert-default-groups-minimal
+      id: 007-insert-default-groups
       author: pokemon-card-planning
-      comment: Insert default groups
-      preConditions:
-        - onFail: MARK_RAN
-        - tableExists:
-            tableName: j_group
-        - sqlCheck:
-            expectedResult: 0
-            sql: SELECT COUNT(*) FROM j_group WHERE name IN ('ADMIN', 'MANAGER', 'SUPERVISOR', 'PROCESSOR', 'VIEWER')
+      comment: Insert default groups for Pokemon card processing
       changes:
-        # Insert default groups only if they don't exist
         - sql:
             sql: |
-              INSERT INTO j_group (id, name, description, permission_level, active, creation_date, modification_date)
+              INSERT INTO j_group (id, name, description, permission_level, active)
               VALUES 
-                (UNHEX(REPLACE(UUID(), '-', '')), 'ADMIN', 'System administrators with full access', 10, true, NOW(), NOW()),
-                (UNHEX(REPLACE(UUID(), '-', '')), 'MANAGER', 'Team managers with planning privileges', 7, true, NOW(), NOW()),
-                (UNHEX(REPLACE(UUID(), '-', '')), 'SUPERVISOR', 'Supervisors with monitoring access', 5, true, NOW(), NOW()),
-                (UNHEX(REPLACE(UUID(), '-', '')), 'PROCESSOR', 'Card processors with basic access', 3, true, NOW(), NOW()),
-                (UNHEX(REPLACE(UUID(), '-', '')), 'VIEWER', 'Read-only access for reporting', 1, true, NOW(), NOW());
+                (UNHEX(REPLACE(UUID(), '-', '')), 'ROLE_ADMIN', 'System administrators', 10, true),
+                (UNHEX(REPLACE(UUID(), '-', '')), 'ROLE_MANAGER', 'Team managers', 7, true),
+                (UNHEX(REPLACE(UUID(), '-', '')), 'ROLE_NOTEUR', 'Card graders', 5, true),
+                (UNHEX(REPLACE(UUID(), '-', '')), 'ROLE_CERTIFICATEUR', 'Card certifiers/encapsulators', 5, true),
+                (UNHEX(REPLACE(UUID(), '-', '')), 'ROLE_SCANNER', 'Card scanners', 4, true),
+                (UNHEX(REPLACE(UUID(), '-', '')), 'ROLE_PREPARATEUR', 'Order preparers', 4, true),
+                (UNHEX(REPLACE(UUID(), '-', '')), 'ROLE_VIEWER', 'Read-only viewers', 2, true);
 
-      rollback:
+  - changeSet:
+      id: 008-insert-test-employees
+      author: pokemon-card-planning
+      comment: Add test employees
+      changes:
         - sql:
-            sql: DELETE FROM j_group WHERE name IN ('ADMIN', 'MANAGER', 'SUPERVISOR', 'PROCESSOR', 'VIEWER');
+            sql: |
+              INSERT INTO j_employee 
+              (id, first_name, last_name, email, work_hours_per_day, active, efficiency_rating)
+              VALUES
+              (UNHEX(REPLACE(UUID(), '-', '')), 'Jean', 'Martin', 'jean.martin@pokemon.com', 8, 1, 1.00),
+              (UNHEX(REPLACE(UUID(), '-', '')), 'Marie', 'Dubois', 'marie.dubois@pokemon.com', 8, 1, 1.10),
+              (UNHEX(REPLACE(UUID(), '-', '')), 'Pierre', 'Durand', 'pierre.durand@pokemon.com', 7, 1, 0.95),
+              (UNHEX(REPLACE(UUID(), '-', '')), 'Sophie', 'Moreau', 'sophie.moreau@pokemon.com', 8, 1, 1.05),
+              (UNHEX(REPLACE(UUID(), '-', '')), 'Lucas', 'Bernard', 'lucas.bernard@pokemon.com', 6, 1, 1.15);
 
   - changeSet:
-      id: 002-add-timestamps-to-group
+      id: 009-create-planning-views
       author: pokemon-card-planning
+      comment: Create helper views
       changes:
-        - addColumn:
-            tableName: j_group
-            columns:
-              - column:
-                  name: created_at
-                  type: DATETIME
-                  defaultValueComputed: CURRENT_TIMESTAMP
-              - column:
-                  name: updated_at
-                  type: DATETIME
-                  defaultValueComputed: CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        - sql:
+            sql: |
+              CREATE OR REPLACE VIEW v_employee_workload AS
+              SELECT 
+                e.id as employee_id,
+                CONCAT(e.first_name, ' ', e.last_name) as employee_name,
+                e.work_hours_per_day,
+                e.efficiency_rating,
+                e.active,
+                COALESCE(SUM(CASE WHEN p.planning_date = CURDATE() AND p.status IN (2, 3, 4, 6, 7, 10, 11) THEN p.estimated_duration_minutes ELSE 0 END), 0) as today_minutes,
+                COALESCE(SUM(CASE WHEN p.planning_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY) AND p.status IN (2, 3, 4, 6, 7, 10, 11) THEN p.estimated_duration_minutes ELSE 0 END), 0) as week_minutes,
+                COUNT(CASE WHEN p.planning_date = CURDATE() AND p.status IN (2, 3, 4, 6, 7, 10, 11) THEN 1 END) as today_orders,
+                COUNT(CASE WHEN p.planning_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY) AND p.status IN (2, 3, 4, 6, 7, 10, 11) THEN 1 END) as week_orders
+              FROM j_employee e
+              LEFT JOIN j_planning p ON e.id = p.employee_id
+              WHERE e.active = 1
+              GROUP BY e.id, e.first_name, e.last_name, e.work_hours_per_day, e.efficiency_rating, e.active;
 
-  - changeSet:
-      id: 002-insert-default-roles
-      author: pokemon-card-planning
-      comment: Insert default roles for the application
-      changes:
-        - insert:
-            tableName: j_group
-            columns:
-              - column:
-                  name: id
-                  valueComputed: UNHEX(REPLACE(UUID(), '-', ''))
-              - column:
-                  name: name
-                  value: ROLE_SUPER_ADMIN
-              - column:
-                  name: description
-                  value: Super administrateur - Accès complet au système
-              - column:
-                  name: active
-                  value: 1
-              - column:
-                  name: permission_level
-                  value: 10
-        - insert:
-            tableName: j_group
-            columns:
-              - column:
-                  name: id
-                  valueComputed: UNHEX(REPLACE(UUID(), '-', ''))
-              - column:
-                  name: name
-                  value: ROLE_NOTEUR
-              - column:
-                  name: description
-                  value: Noteur - Attribution des notes aux cartes
-              - column:
-                  name: active
-                  value: 1
-              - column:
-                  name: permission_level
-                  value: 3
-        - insert:
-            tableName: j_group
-            columns:
-              - column:
-                  name: id
-                  valueComputed: UNHEX(REPLACE(UUID(), '-', ''))
-              - column:
-                  name: name
-                  value: ROLE_CERTIFICATEUR
-              - column:
-                  name: description
-                  value: Certificateur - certifie les cartes
-              - column:
-                  name: active
-                  value: 1
-              - column:
-                  name: permission_level
-                  value: 3
-        - insert:
-            tableName: j_group
-            columns:
-              - column:
-                  name: id
-                  valueComputed: UNHEX(REPLACE(UUID(), '-', ''))
-              - column:
-                  name: name
-                  value: ROLE_PREPARATEUR
-              - column:
-                  name: description
-                  value: prépare la commande
-              - column:
-                  name: active
-                  value: 1
-              - column:
-                  name: permission_level
-                  value: 3
-        - insert:
-            tableName: j_group
-            columns:
-              - column:
-                  name: id
-                  valueComputed: UNHEX(REPLACE(UUID(), '-', ''))
-              - column:
-                  name: name
-                  value: ROLE_DIRECTION
-              - column:
-                  name: description
-                  value: la direction
-              - column:
-                  name: active
-                  value: 1
-              - column:
-                  name: permission_level
-                  value: 7
-        - insert:
-            tableName: j_group
-            columns:
-              - column:
-                  name: id
-                  valueComputed: UNHEX(REPLACE(UUID(), '-', ''))
-              - column:
-                  name: name
-                  value: ROLE_RECEPTIONNEUR
-              - column:
-                  name: description
-                  value: la récéption des commandes
-              - column:
-                  name: active
-                  value: 1
-              - column:
-                  name: permission_level
-                  value: 3
-        - insert:
-            tableName: j_group
-            columns:
-              - column:
-                  name: id
-                  valueComputed: UNHEX(REPLACE(UUID(), '-', ''))
-              - column:
-                  name: name
-                  value: ROLE_EMPLOYE
-              - column:
-                  name: description
-                  value: l'employé
-              - column:
-                  name: active
-                  value: 1
-              - column:
-                  name: permission_level
-                  value: 2
-        # Répétez pour les autres rôles...
+        - sql:
+            sql: |
+              CREATE OR REPLACE VIEW v_order_planning_summary AS
+              SELECT 
+                o.id as order_id,
+                o.num_commande as order_number,
+                o.num_commande_client as client_order_number,
+                o.date as order_date,
+                o.status as order_status,
+                osm.status_name_en as order_status_name,
+                o.delai as order_delai,
+                COALESCE(
+                  (SELECT COUNT(*) FROM card_certification_order cco WHERE cco.order_id = o.id),
+                  0
+                ) as card_count,
+                COALESCE(p.id, NULL) as planning_id,
+                COALESCE(p.planning_date, NULL) as scheduled_date,
+                COALESCE(p.employee_id, NULL) as assigned_employee_id,
+                COALESCE(CONCAT(e.first_name, ' ', e.last_name), NULL) as assigned_employee_name,
+                COALESCE(p.status, 0) as planning_status,
+                COALESCE(psm.status_name_en, 'UNSCHEDULED') as planning_status_name,
+                COALESCE(p.delai, o.delai, 'C') as planning_delai
+              FROM `order` o
+              LEFT JOIN j_planning p ON o.id = p.order_id
+                              LEFT JOIN j_employee e ON p.employee_id = e.id
+              LEFT JOIN j_order_status_mapping osm ON o.status = osm.status_value
+              LEFT JOIN j_order_status_mapping psm ON p.status = psm.status_value
+              WHERE o.annulee = 0 AND o.paused = 0;

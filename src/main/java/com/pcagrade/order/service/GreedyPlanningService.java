@@ -1,5 +1,6 @@
 package com.pcagrade.order.service;
 
+import com.pcagrade.order.util.PlanningUtils;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -88,8 +89,23 @@ public class GreedyPlanningService {
 
                     int durationMinutes = Math.max(60, 30 + cardCount * 3);
 
-                    // ✅ Sauvegarder immédiatement en base
-                    boolean saved = savePlanningToDatabase(orderId, employeeId, day, month, year, durationMinutes, cardCount);
+                    // ✅ Récupérer le delai
+                    String delai = PlanningUtils.getDelaiForPlanning(order);
+
+                    // ✅ Créer le LocalDate et LocalDateTime
+                    LocalDate planningDate = LocalDate.of(year, month, day);
+                    LocalDateTime startTime = LocalDateTime.of(planningDate, LocalTime.of(9, 0));  // ← AJOUTÉ
+
+                    // ✅ CORRIGÉ: Passer les 7 paramètres
+                    boolean saved = savePlanningToDatabase(
+                            orderId,
+                            employeeId,
+                            planningDate,    // 3
+                            startTime,       // 4 ← AJOUTÉ
+                            durationMinutes, // 5
+                            cardCount,       // 6
+                            delai            // 7
+                    );
 
                     if (saved) {
                         String employeeName = employee.get("firstName") + " " + employee.get("lastName");
@@ -102,7 +118,7 @@ public class GreedyPlanningService {
                         planning.put("duration_minutes", durationMinutes);
                         planning.put("card_count", cardCount);
                         planning.put("order_number", order.get("orderNumber"));
-                        planning.put("priority", order.get("priority"));
+                        planning.put("delai", delai);
 
                         createdPlannings.add(planning);
 
@@ -110,7 +126,6 @@ public class GreedyPlanningService {
                                 order.get("orderNumber"), employeeName);
                     }
                 }
-
                 employeeIndex++; // Toujours incrémenter pour maintenir la rotation
             }
 
@@ -276,22 +291,34 @@ public class GreedyPlanningService {
         }
     }
 
-    private boolean savePlanningToDatabase(String orderId, String employeeId, int day, int month, int year,
-                                           int durationMinutes, int cardCount) {
+    private boolean savePlanningToDatabase(
+            String orderId,
+            String employeeId,
+            LocalDate planningDate,
+            LocalDateTime startDateTime,
+            int durationMinutes,
+            int cardCount,
+            String delai  // ✅ AJOUTÉ
+    ) {
         try {
-            LocalDate planningDate = LocalDate.of(year, month, day);
-            LocalTime startTime = LocalTime.of(9, 0); // Heure de début par défaut
-            LocalDateTime startDateTime = LocalDateTime.of(planningDate, startTime);
+            String planningId = UUID.randomUUID().toString().replace("-", "");
             LocalDateTime endDateTime = startDateTime.plusMinutes(durationMinutes);
 
-            String planningId = UUID.randomUUID().toString().replace("-", "");
-
+            // ✅ NOUVELLE REQUÊTE SQL
             String insertSql = """
-        INSERT INTO j_planning 
-        (id, order_id, employee_id, planning_date, start_time, end_time, 
-         estimated_duration_minutes, estimated_end_time, priority, status, 
-         completed, card_count, notes, created_at, updated_at)
-        VALUES (UNHEX(?), UNHEX(?), UNHEX(?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            INSERT INTO j_planning (
+                id, order_id, employee_id, 
+                planning_date, start_time, end_time,
+                estimated_duration_minutes, estimated_end_time,
+                delai, status, completed, card_count,
+                notes, progress_percentage, created_at, updated_at
+            ) VALUES (
+                UNHEX(?), UNHEX(?), UNHEX(?), 
+                ?, ?, ?, 
+                ?, ?,
+                ?, ?, ?, ?,
+                ?, ?, NOW(), NOW()
+            )
         """;
 
             Query insertQuery = entityManager.createNativeQuery(insertSql);
@@ -303,18 +330,20 @@ public class GreedyPlanningService {
             insertQuery.setParameter(6, endDateTime);
             insertQuery.setParameter(7, durationMinutes);
             insertQuery.setParameter(8, endDateTime);
-            insertQuery.setParameter(9, "MEDIUM");
-            insertQuery.setParameter(10, "SCHEDULED");
-            insertQuery.setParameter(11, 0); // completed = false
+            insertQuery.setParameter(9, delai);  // ✅ VARCHAR
+            insertQuery.setParameter(10, 2);     // ✅ INT: status = 2 (A_NOTER)
+            insertQuery.setParameter(11, 0);     // completed = false
             insertQuery.setParameter(12, cardCount);
-            insertQuery.setParameter(13, String.format("Auto-generated planning for %d cards", cardCount));
+            insertQuery.setParameter(13, String.format("Auto-generated: %d cards", cardCount));
+            insertQuery.setParameter(14, 0);     // progress_percentage
 
             int rowsAffected = insertQuery.executeUpdate();
             return rowsAffected > 0;
 
         } catch (Exception e) {
-            log.error("Error saving planning to database: {}", e.getMessage());
+            log.error("❌ Error saving planning: {}", e.getMessage());
             return false;
         }
     }
+
 }

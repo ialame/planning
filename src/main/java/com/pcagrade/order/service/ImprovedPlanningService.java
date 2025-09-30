@@ -435,9 +435,9 @@ public class ImprovedPlanningService {
                 INSERT INTO j_planning 
                 (id, order_id, employee_id, planning_date, start_time, end_time,
                  estimated_duration_minutes, status, 
-                 completed, notes, created_at, updated_at)
+                 completed, card_count,delai, created_at, updated_at)
                 VALUES (UNHEX(?), UNHEX(?), UNHEX(?), ?, ?, ?,
-                        ?, 'SCHEDULED', 0, ?, NOW(), NOW())
+                        ?, 'SCHEDULED', 0, ?, ?, NOW(), NOW())
                 """;
 
             Query query = entityManager.createNativeQuery(sql);
@@ -448,7 +448,8 @@ public class ImprovedPlanningService {
             query.setParameter(5, startTime);
             query.setParameter(6, endTime);
             query.setParameter(7, durationMinutes);
-            query.setParameter(8, String.format("Auto-planned: %d cards, delai: %s", cardCount, delai));
+            query.setParameter(8, cardCount);
+            query.setParameter(9 ,delai);
 
             int result = query.executeUpdate();
             return result > 0;

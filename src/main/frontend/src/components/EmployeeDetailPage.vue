@@ -938,7 +938,7 @@ const getOrderStatusText = (status) => {
 /**
  * Get color classes for delai
  */
-const getDelaiColor = (delai) => {
+const getDelaiColor = (delai:string) => {
   if (!delai) return 'bg-gray-100 text-gray-800'
 
   switch (delai.toUpperCase()) {
@@ -954,7 +954,7 @@ const getDelaiColor = (delai) => {
 /**
  * Get label for delai
  */
-const getDelaiLabel = (delai) => {
+const getDelaiLabel = (delai:string) => {
   if (!delai) return 'Unknown'
 
   switch (delai.toUpperCase()) {

@@ -297,43 +297,67 @@ public class PlanningService {
     /**
      * 💾 SAUVEGARDE OPTIMISÉE
      */
-    private boolean savePlanningOptimized(String planningId, String orderId, String employeeId,
-                                          LocalDate planningDate, LocalDateTime startTime,
-                                          int durationMinutes, String priority, int cardCount) {
+    @Transactional
+    public boolean savePlanningOptimized(
+            String planningId,
+            String orderId,
+            String employeeId,
+            LocalDate planningDate,
+            LocalDateTime startTime,
+            int durationMinutes,
+            String delai,  // ✅ CHANGÉ: String au lieu de priorityString
+            int cardCount
+    ) {
         try {
+            // ✅ NOUVELLE REQUÊTE SQL avec delai VARCHAR et status INT
+            String insertSql = """
+            INSERT INTO j_planning (
+                id, order_id, employee_id, 
+                planning_date, start_time, end_time,
+                estimated_duration_minutes, estimated_end_time,
+                delai, status, completed, card_count,
+                progress_percentage, created_at, updated_at
+            ) VALUES (
+                UNHEX(?), UNHEX(?), UNHEX(?),
+                ?, ?, ?,
+                ?, ?,
+                ?, ?, ?, ?,
+                ?, NOW(), NOW()
+            )
+        """;
+
             LocalDateTime endTime = startTime.plusMinutes(durationMinutes);
 
-            String sql = """
-                INSERT INTO j_planning (
-                    id, order_id, employee_id, planning_date, start_time, 
-                    estimated_duration_minutes, estimated_end_time, 
-                    priority, status, card_count, created_at, updated_at
-                ) VALUES (
-                    UNHEX(?), UNHEX(?), UNHEX(?), ?, ?, 
-                    ?, ?, ?, 'SCHEDULED', ?, NOW(), NOW()
-                )
-            """;
-
-            Query query = entityManager.createNativeQuery(sql);
+            Query query = entityManager.createNativeQuery(insertSql);
             query.setParameter(1, planningId);
-            query.setParameter(2, orderId.replace("-", ""));
-            query.setParameter(3, employeeId.replace("-", ""));
+            query.setParameter(2, orderId);
+            query.setParameter(3, employeeId);
             query.setParameter(4, planningDate);
             query.setParameter(5, startTime);
-            query.setParameter(6, durationMinutes);
-            query.setParameter(7, endTime);
-            query.setParameter(8, priority);
-            query.setParameter(9, cardCount);
+            query.setParameter(6, endTime);
+            query.setParameter(7, durationMinutes);
+            query.setParameter(8, endTime);
+            query.setParameter(9, delai);  // ✅ VARCHAR: 'X', 'F+', 'F', 'C', 'E'
+            query.setParameter(10, 2);     // ✅ INT: 2 = A_NOTER (default)
+            query.setParameter(11, false); // completed
+            query.setParameter(12, cardCount);
+            query.setParameter(13, 0);     // progress_percentage
 
-            int result = query.executeUpdate();
-            return result > 0;
+            int rowsAffected = query.executeUpdate();
+
+            if (rowsAffected > 0) {
+                log.info("✅ Planning saved: orderId={}, employeeId={}, delai={}, status=2",
+                        orderId, employeeId, delai);
+                return true;
+            }
+
+            return false;
 
         } catch (Exception e) {
-            log.error("❌ Erreur sauvegarde planning: {}", e.getMessage());
+            log.error("❌ Error saving planning: {}", e.getMessage(), e);
             return false;
         }
     }
-
     // ========== CLASSES UTILITAIRES ==========
 
     /**

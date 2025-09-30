@@ -254,8 +254,13 @@ public class EmployeesPlanningController {
         }
     }
 
+    // ============================================================
+// FILE: src/main/java/com/pcagrade/order/controller/EmployeesPlanningController.java
+// LOCATION: Method getEmployeeOrders() - Line ~150
+// ============================================================
+
     /**
-     * 📋 GET EMPLOYEE ORDERS - Commandes assignées à un employé
+     * 📋 GET EMPLOYEE ORDERS - Fixed to include DELAI column
      */
     @GetMapping("/{employeeId}/orders")
     public ResponseEntity<Map<String, Object>> getEmployeeOrders(
@@ -267,25 +272,28 @@ public class EmployeesPlanningController {
 
             String dateFilter = date != null ? " AND p.planning_date = '" + date + "'" : "";
 
+            // ✅ FIXED SQL: Added o.delai column to retrieve the priority
             String sql = """
-                SELECT 
-                    HEX(p.id) as planningId,
-                    HEX(p.order_id) as orderId,
-                    o.num_commande as orderNumber,
-                    p.planning_date,
-                    p.start_time,
-                    p.estimated_duration_minutes,
-                    p.priority,
-                    p.status,
-                    p.completed,
-                    p.card_count,
-                    p.progress_percentage,
-                    ROUND(p.estimated_duration_minutes / 60.0, 2) as estimatedHours
-                FROM j_planning p
-                LEFT JOIN `order` o ON p.order_id = o.id
-                WHERE HEX(p.employee_id) = ?""" + dateFilter + """
-                ORDER BY p.planning_date ASC, p.start_time ASC
-                """;
+            SELECT 
+                HEX(p.id) as planningId,
+                HEX(p.order_id) as orderId,
+                o.num_commande as orderNumber,
+                o.delai as delai,
+                p.planning_date,
+                p.start_time,
+                p.estimated_duration_minutes,
+                p.priority,
+                p.status,
+                p.completed,
+                p.card_count,
+                p.progress_percentage,
+                ROUND(p.estimated_duration_minutes / 60.0, 2) as estimatedHours
+            FROM j_planning p
+            LEFT JOIN `order` o ON p.order_id = o.id
+            WHERE HEX(p.employee_id) = ?"""
+                    + dateFilter + """
+            ORDER BY p.planning_date DESC, p.start_time ASC
+            """;
 
             Query query = entityManager.createNativeQuery(sql);
             query.setParameter(1, employeeId.toUpperCase());
@@ -294,29 +302,24 @@ public class EmployeesPlanningController {
             List<Object[]> results = query.getResultList();
 
             List<Map<String, Object>> orders = new ArrayList<>();
-            int totalDuration = 0;
-            int totalCards = 0;
 
             for (Object[] row : results) {
                 Map<String, Object> order = new HashMap<>();
-                order.put("id", row[0]); // Planning ID
+
+                // Map all columns including delai
+                order.put("planningId", row[0]);
                 order.put("orderId", row[1]);
                 order.put("orderNumber", row[2]);
-                order.put("planningDate", row[3]);
-                order.put("startTime", row[4]);
-                order.put("estimatedDuration", row[5]);
-                order.put("priority", row[6]);
-                order.put("status", row[7]);
-                order.put("completed", row[8]);
-                order.put("cardCount", row[9]);
-                order.put("progress", row[10]);
-                order.put("estimatedHours", row[11]);
-
-                // Add to totals
-                Integer duration = (Integer) row[5];
-                Integer cardCount = (Integer) row[9];
-                if (duration != null) totalDuration += duration;
-                if (cardCount != null) totalCards += cardCount;
+                order.put("delai", row[3]); // ✅ NOW INCLUDED
+                order.put("planningDate", row[4]);
+                order.put("startTime", row[5]);
+                order.put("estimatedDurationMinutes", row[6]);
+                order.put("priority", row[7]);
+                order.put("status", row[8]);
+                order.put("completed", row[9]);
+                order.put("cardCount", row[10]);
+                order.put("progressPercentage", row[11]);
+                order.put("estimatedHours", row[12]);
 
                 orders.add(order);
             }
@@ -325,9 +328,11 @@ public class EmployeesPlanningController {
             response.put("success", true);
             response.put("orders", orders);
             response.put("total", orders.size());
-            response.put("totalDurationMinutes", totalDuration);
-            response.put("totalHours", Math.round(totalDuration / 60.0 * 100.0) / 100.0);
-            response.put("totalCards", totalCards);
+            response.put("employeeId", employeeId);
+
+            if (date != null) {
+                response.put("date", date);
+            }
 
             log.info("✅ Retrieved {} orders for employee {}", orders.size(), employeeId);
             return ResponseEntity.ok(response);
@@ -340,7 +345,6 @@ public class EmployeesPlanningController {
             return ResponseEntity.internalServerError().body(errorResponse);
         }
     }
-
     /**
      * 🃏 GET ORDER CARDS - Cartes d'une commande spécifique
      */

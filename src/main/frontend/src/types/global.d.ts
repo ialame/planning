@@ -11,7 +11,7 @@ declare global {
     reference: string;
     cardCount: number;
     totalPrice: number;
-    priority: 'EXCELSIOR' | 'FAST_PLUS' | 'FAST' | 'CLASSIC';
+    delai: 'EXCELSIOR' | 'FAST_PLUS' | 'FAST' | 'CLASSIC';
     status: number; // Now using integer status codes
     statusText: string;
     estimatedTimeMinutes: number;
