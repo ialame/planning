@@ -87,127 +87,130 @@
       <p>No orders found for {{ selectedDate }}</p>
     </div>
 
-    <!-- Orders Timeline -->
-    <div v-else class="orders-timeline">
-      <h2 class="timeline-title">
-        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
-        </svg>
-        Work Schedule
-      </h2>
+      <!-- Orders Timeline -->
+      <div v-else class="orders-timeline">
+        <h2 class="timeline-title">
+          <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+          </svg>
+          Work Schedule
+        </h2>
 
-      <!-- Group orders by day -->
-      <div v-for="(dayOrders, date) in ordersByDay" :key="date" class="day-group">
-        <div class="day-header">
-          <div class="day-date">
-            <span class="day-name">{{ formatDayName(date) }}</span>
-            <span class="day-full-date">{{ formatFullDate(date) }}</span>
+        <!-- FIXED: Correct v-for syntax for array of objects -->
+        <div v-for="dayGroup in ordersByDay" :key="dayGroup.date" class="day-group">
+          <div class="day-header">
+            <div class="day-date">
+              <!-- Use dayGroup.date instead of date -->
+              <span class="day-name">{{ formatDayName(dayGroup.date) }}</span>
+              <span class="day-full-date">{{ formatFullDate(dayGroup.date) }}</span>
+            </div>
+            <div class="day-summary">
+              <!-- Use dayGroup.orders instead of dayOrders -->
+              <span class="summary-badge">{{ dayGroup.orders.length }} orders</span>
+              <span class="summary-badge">{{ calculateDayCards(dayGroup.orders) }} cards</span>
+              <span class="summary-badge">{{ formatDuration(calculateDayDuration(dayGroup.orders)) }}</span>
+            </div>
           </div>
-          <div class="day-summary">
-            <span class="summary-badge">{{ dayOrders.length }} orders</span>
-            <span class="summary-badge">{{ calculateDayCards(dayOrders) }} cards</span>
-            <span class="summary-badge">{{ formatDuration(calculateDayDuration(dayOrders)) }}</span>
-          </div>
-        </div>
 
-        <!-- Orders for this day -->
-        <div class="day-orders">
-          <div
-            v-for="order in dayOrders"
-            :key="order.planningId || order.id"
-            :class="['order-card', `priority-${getDelaiClass(order.delai)}`]"
-            @click="toggleOrderCards(order)"
-          >
-            <!-- Order Header -->
-            <div class="order-header">
-              <div class="order-time">
+          <!-- Orders for this day -->
+          <div class="day-orders">
+            <!-- Use dayGroup.orders instead of dayOrders -->
+            <div
+              v-for="order in dayGroup.orders"
+              :key="order.planningId || order.id"
+              :class="['order-card', `priority-${getDelaiClass(order.delai)}`]"
+              @click="toggleOrderCards(order)"
+            >
+              <!-- Order Header -->
+              <div class="order-header">
+                <div class="order-time">
+                  <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  <span class="time-range">
+              {{ formatTime(order.startTime) }} - {{ formatTime(order.endTime) }}
+            </span>
+                  <span class="duration-badge">{{ formatDuration(order.duration || order.durationMinutes || 0) }}</span>
+                </div>
+
+                <div class="order-badges">
+            <span :class="['priority-badge', `priority-${getDelaiClass(order.delai)}`]">
+              {{ getDelaiLabel(order.delai) }}
+            </span>
+                  <span :class="['status-badge', `status-${order.status}`]">
+              {{ getStatusLabel(order.status) }}
+            </span>
+                </div>
+              </div>
+
+              <!-- Order Content -->
+              <div class="order-content">
+                <div class="order-main">
+                  <h3 class="order-number">
+                    📦 Order {{ order.orderNumber || order.clientOrderNumber }}
+                  </h3>
+                  <div class="order-meta">
+              <span class="meta-item">
                 <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
                 </svg>
-                <span class="time-range">
-                  {{ formatTime(order.startTime) }} - {{ formatTime(order.endTime) }}
-                </span>
-                <span class="duration-badge">{{ formatDuration(order.duration || order.durationMinutes || 0) }}</span>
-              </div>
-
-              <div class="order-badges">
-                <span :class="['priority-badge', `priority-${getDelaiClass(order.delai)}`]">
-                  {{ getDelaiLabel(order.delai) }}
-                </span>
-                <span :class="['status-badge', `status-${order.status}`]">
-                  {{ getStatusLabel(order.status) }}
-                </span>
-              </div>
-            </div>
-
-            <!-- Order Content -->
-            <div class="order-content">
-              <div class="order-main">
-                <h3 class="order-number">
-                  📦 Order {{ order.orderNumber || order.clientOrderNumber }}
-                </h3>
-                <div class="order-meta">
-                  <span class="meta-item">
-                    <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
-                    </svg>
-                    {{ order.cardCount || 0 }} cards
-                  </span>
-                  <span v-if="order.cardsWithName" class="meta-item">
-                    <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    {{ order.cardsWithName }} named
-                  </span>
-                  <span v-if="order.orderDate" class="meta-item">
-                    <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                    </svg>
-                    Created {{ formatDate(order.orderDate) }}
-                  </span>
-                </div>
-              </div>
-
-              <!-- Expand Cards Button -->
-              <button
-                v-if="order.cardCount > 0"
-                class="expand-btn"
-                @click.stop="toggleOrderCards(order)"
-              >
-                <svg v-if="!order.showCards" class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                {{ order.cardCount || 0 }} cards
+              </span>
+                    <span v-if="order.cardsWithName" class="meta-item">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
-                <svg v-else class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+                {{ order.cardsWithName }} named
+              </span>
+                    <span v-if="order.orderDate" class="meta-item">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                 </svg>
-                {{ order.showCards ? 'Hide' : 'Show' }} Cards
-              </button>
-            </div>
-
-            <!-- Expanded Cards List -->
-            <div v-if="order.showCards" class="cards-list">
-              <div v-if="order.loadingCards" class="cards-loading">
-                <div class="spinner-sm"></div>
-                Loading cards...
-              </div>
-              <div v-else-if="order.cards && order.cards.length > 0" class="cards-grid">
-                <div v-for="card in order.cards" :key="card.id" class="card-item">
-                  <div class="card-icon">🃏</div>
-                  <div class="card-info">
-                    <div class="card-name">{{ card.name || 'Unnamed Card' }}</div>
-                    <div class="card-label">{{ card.label_name || card.code_barre }}</div>
+                Created {{ formatDate(order.orderDate) }}
+              </span>
                   </div>
-                  <div class="card-duration">{{ card.duration || 3 }}min</div>
                 </div>
+
+                <!-- Expand Cards Button -->
+                <button
+                  v-if="order.cardCount > 0"
+                  class="expand-btn"
+                  @click.stop="toggleOrderCards(order)"
+                >
+                  <svg v-if="!order.showCards" class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                  </svg>
+                  <svg v-else class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+                  </svg>
+                  {{ order.showCards ? 'Hide' : 'Show' }} Cards
+                </button>
               </div>
-              <div v-else class="no-cards">
-                No card details available
+
+              <!-- Expanded Cards List -->
+              <div v-if="order.showCards" class="cards-list">
+                <div v-if="order.loadingCards" class="cards-loading">
+                  <div class="spinner-sm"></div>
+                  Loading cards...
+                </div>
+                <div v-else-if="order.cards && order.cards.length > 0" class="cards-grid">
+                  <div v-for="card in order.cards" :key="card.id" class="card-item">
+                    <div class="card-icon">🃏</div>
+                    <div class="card-info">
+                      <div class="card-name">{{ card.name || 'Unnamed Card' }}</div>
+                      <div class="card-label">{{ card.label_name || card.code_barre }}</div>
+                    </div>
+                    <div class="card-duration">{{ card.duration || 3 }}min</div>
+                  </div>
+                </div>
+                <div v-else class="no-cards">
+                  No card details available
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
   </div>
 </template>
 
@@ -232,22 +235,36 @@ const orders = ref<any[]>([])
 const loading = ref(false)
 const localSelectedDate = ref(props.selectedDate)
 
-// Computed
+// Calculate total cards from orders
 const totalCards = computed(() => {
   return orders.value.reduce((sum, order) => sum + (order.cardCount || 0), 0)
 })
 
+// Calculate total duration from orders
 const totalDuration = computed(() => {
-  return orders.value.reduce((sum, order) => sum + (order.estimatedDurationMinutes || 0), 0)
+  return orders.value.reduce((sum, order) => {
+    // Try different field names that the API might return
+    const duration = order.duration ||
+      order.durationMinutes ||
+      order.estimatedDurationMinutes ||
+      order.estimatedDuration ||
+      0
+    return sum + duration
+  }, 0)
 })
 
+// Group orders by day with FIXED field mapping
 const ordersByDay = computed(() => {
   const grouped: Record<string, any[]> = {}
 
   orders.value.forEach(order => {
+    // Get the planning date
     const date = order.planningDate || order.date
     if (date) {
-      const dateKey = typeof date === 'string' ? date.split('T')[0] : date.toString()
+      // Extract just the date part (YYYY-MM-DD) from ISO timestamp
+      const dateKey = typeof date === 'string' ?
+        date.split('T')[0] : date.toString()
+
       if (!grouped[dateKey]) {
         grouped[dateKey] = []
       }
@@ -255,16 +272,24 @@ const ordersByDay = computed(() => {
     }
   })
 
+  // Sort by date and create day objects
   return Object.keys(grouped)
     .sort()
     .map(date => ({
       date,
       orders: grouped[date],
+      // FIXED: Use correct field names from API response
       totalCards: grouped[date].reduce((sum, o) => sum + (o.cardCount || 0), 0),
-      totalDuration: grouped[date].reduce((sum, o) => sum + (o.estimatedDurationMinutes || 0), 0)
+      totalDuration: grouped[date].reduce((sum, o) => {
+        const duration = o.duration ||
+          o.durationMinutes ||
+          o.estimatedDurationMinutes ||
+          o.estimatedDuration ||
+          0
+        return sum + duration
+      }, 0)
     }))
 })
-
 // Methods
 const goBack = () => {
   console.log('Going back to employees list')
@@ -326,6 +351,10 @@ const getInitials = (name: string | undefined) => {
   return name.substring(0, 2).toUpperCase()
 }
 
+// ========== FIXED DATE/TIME FORMATTING METHODS ==========
+// Replace the existing formatting methods in EmployeeDetailPage.vue
+
+// Format duration in minutes to hours/minutes
 const formatDuration = (minutes: number) => {
   if (!minutes) return '0h'
   const hours = Math.floor(minutes / 60)
@@ -333,10 +362,13 @@ const formatDuration = (minutes: number) => {
   return mins > 0 ? `${hours}h${mins}m` : `${hours}h`
 }
 
+// Format date (e.g., "Jun 5, 2025")
 const formatDate = (date: any) => {
   if (!date) return 'N/A'
   try {
-    return new Date(date).toLocaleDateString('en-US', {
+    // Handle both ISO strings and Date objects
+    const dateObj = typeof date === 'string' ? new Date(date) : date
+    return dateObj.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric'
@@ -346,13 +378,23 @@ const formatDate = (date: any) => {
   }
 }
 
+// Format time from ISO timestamp or time string
 const formatTime = (time: any) => {
   if (!time) return 'N/A'
   try {
+    // If it's already in HH:MM format, return as is
     if (typeof time === 'string' && time.match(/^\d{2}:\d{2}$/)) {
       return time
     }
+
+    // Parse ISO timestamp (e.g., "2025-06-01T07:27:00.000+00:00")
     const date = new Date(time)
+
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return 'N/A'
+    }
+
     return date.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
@@ -362,6 +404,207 @@ const formatTime = (time: any) => {
     return 'N/A'
   }
 }
+
+// Format day name (e.g., "Monday")
+const formatDayName = (date: string) => {
+  if (!date) return 'N/A'
+  try {
+    // Extract date part if ISO timestamp
+    const dateStr = date.split('T')[0]
+    const dateObj = new Date(dateStr + 'T00:00:00')
+
+    if (isNaN(dateObj.getTime())) {
+      return 'N/A'
+    }
+
+    return dateObj.toLocaleDateString('en-US', { weekday: 'long' })
+  } catch {
+    return 'N/A'
+  }
+}
+
+// Format full date (e.g., "June 1, 2025")
+const formatFullDate = (date: string) => {
+  if (!date) return 'N/A'
+  try {
+    // Extract date part if ISO timestamp
+    const dateStr = date.split('T')[0]
+    const dateObj = new Date(dateStr + 'T00:00:00')
+
+    if (isNaN(dateObj.getTime())) {
+      return 'N/A'
+    }
+
+    return dateObj.toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
+    })
+  } catch {
+    return 'N/A'
+  }
+}
+
+// Calculate total cards for a day
+const calculateDayCards = (dayOrders: any[]) => {
+  if (!dayOrders || !Array.isArray(dayOrders)) return 0
+  return dayOrders.reduce((sum, order) => sum + (order.cardCount || 0), 0)
+}
+
+// Calculate total duration for a day
+const calculateDayDuration = (dayOrders: any[]) => {
+  if (!dayOrders || !Array.isArray(dayOrders)) return 0
+  return dayOrders.reduce((sum, order) => {
+    const duration = order.duration ||
+      order.durationMinutes ||
+      order.estimatedDurationMinutes ||
+      order.estimatedDuration ||
+      0
+    return sum + duration
+  }, 0)
+}
+
+// Get CSS class for priority/delai
+const getDelaiClass = (delai: string) => {
+  if (!delai) return 'default'
+
+  const map: Record<string, string> = {
+    'X': 'excelsior',
+    'F+': 'fast-plus',
+    'F': 'fast',
+    'C': 'classic',
+    'E': 'economy'
+  }
+  return map[delai.toUpperCase()] || 'default'
+}
+
+// Get display label for priority/delai
+const getDelaiLabel = (delai: string) => {
+  if (!delai) return 'Unknown'
+
+  const map: Record<string, string> = {
+    'X': '⚡ Excelsior',
+    'F+': '🚀 Fast+',
+    'F': '⏩ Fast',
+    'C': '📦 Classic',
+    'E': '🐌 Economy'
+  }
+  return map[delai.toUpperCase()] || delai
+}
+
+// Get display label for order status
+const getStatusLabel = (status: number | string) => {
+  const statusMap: Record<number, string> = {
+    1: '📥 To be received',
+    9: '✅ Package accepted',
+    10: '📸 To be scanned',
+    11: '📂 To be opened',
+    2: '📝 To be evaluated',
+    3: '🔒 To be encapsulated',
+    4: '📦 To be prepared',
+    7: '🔓 To be unsealed',
+    6: '👀 To be seen',
+    41: '🚚 To be delivered',
+    42: '📮 To be sent',
+    5: '✈️ Sent',
+    8: '🎉 Received'
+  }
+
+  const statusNum = typeof status === 'string' ? parseInt(status) : status
+  return statusMap[statusNum] || `Status ${status}`
+}
+
+// Toggle order cards visibility and load if needed
+const toggleOrderCards = async (order: any) => {
+  // Toggle visibility
+  order.showCards = !order.showCards
+
+  // If hiding, just return
+  if (!order.showCards) {
+    return
+  }
+
+  // If already loaded, just show
+  if (order.cards && order.cards.length > 0) {
+    return
+  }
+
+  // If already loading, don't start another request
+  if (order.loadingCards) {
+    return
+  }
+
+  // Load cards from API
+  order.loadingCards = true
+
+  try {
+    // Use orderId from the order object
+    const orderId = order.orderId || order.id
+
+    if (!orderId) {
+      console.error('❌ No orderId found in order:', order)
+      order.cards = []
+      return
+    }
+
+    console.log('🃏 Loading cards for order:', orderId)
+
+    // Try the planning endpoint first (more complete data)
+    let url = `${API_BASE_URL}/api/planning/order/${orderId}/cards`
+    console.log('🔗 Fetching from:', url)
+
+    let response = await fetch(url)
+
+    // If planning endpoint fails, try orders endpoint
+    if (!response.ok) {
+      console.log('⚠️ Planning endpoint failed, trying orders endpoint...')
+      url = `${API_BASE_URL}/api/orders/${orderId}/cards`
+      console.log('🔗 Fetching from:', url)
+      response = await fetch(url)
+    }
+
+    if (response.ok) {
+      const data = await response.json()
+      console.log('✅ Cards API response:', data)
+
+      // Handle different response formats
+      if (data.success && Array.isArray(data.cards)) {
+        // Format from planning endpoint: {success: true, cards: [...]}
+        order.cards = data.cards
+        console.log(`✅ Loaded ${order.cards.length} cards from planning endpoint`)
+      } else if (Array.isArray(data)) {
+        // Format from orders endpoint: [...]
+        order.cards = data
+        console.log(`✅ Loaded ${order.cards.length} cards from orders endpoint`)
+      } else {
+        console.warn('⚠️ Unexpected response format:', data)
+        order.cards = []
+      }
+
+      // Ensure each card has the required fields
+      order.cards = order.cards.map((card: any) => ({
+        id: card.id,
+        name: card.name || card.cardName || 'Unnamed Card',
+        label_name: card.labelName || card.label_name || card.barcode || card.code_barre || '',
+        code_barre: card.barcode || card.code_barre || '',
+        duration: card.duration || 3,
+        grade: card.grade || '',
+        quantity: card.quantity || card.amount || 1
+      }))
+
+    } else {
+      console.error('❌ API error:', response.status, response.statusText)
+      order.cards = []
+    }
+
+  } catch (error) {
+    console.error('❌ Error loading cards:', error)
+    order.cards = []
+  } finally {
+    order.loadingCards = false
+  }
+}
+
 
 // PAS DE WATCH - chargement uniquement au montage
 onMounted(() => {
