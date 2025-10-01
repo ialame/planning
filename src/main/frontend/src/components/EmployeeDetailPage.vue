@@ -60,7 +60,7 @@
       </label>
       <input
         type="date"
-        v-model="selectedDate"
+        v-model="localSelectedDate"
         @change="loadEmployeeOrders"
         class="date-input"
       />
@@ -212,25 +212,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, inject } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
 
 const props = defineProps<{
   employeeId: string
+  selectedDate: string
+  mode?: string
 }>()
 
-const router = useRouter()
-const showNotification = inject('showNotification', null)
+const emit = defineEmits<{
+  back: []
+  refresh: []
+}>()
 
-// Configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
-
-// State
 const employeeData = ref<any>(null)
 const orders = ref<any[]>([])
 const loading = ref(false)
-const loadingEmployee = ref(false)
-const selectedDate = ref(new Date().toISOString().split('T')[0])
+const localSelectedDate = ref(props.selectedDate)
 
 // Computed
 const totalCards = computed(() => {
@@ -238,210 +238,67 @@ const totalCards = computed(() => {
 })
 
 const totalDuration = computed(() => {
-  return orders.value.reduce((sum, order) => {
-    const duration = order.duration || order.durationMinutes || (order.cardCount * 3)
-    return sum + duration
-  }, 0)
+  return orders.value.reduce((sum, order) => sum + (order.estimatedDurationMinutes || 0), 0)
 })
 
 const ordersByDay = computed(() => {
   const grouped: Record<string, any[]> = {}
 
   orders.value.forEach(order => {
-    const date = order.planningDate || order.startTime?.split('T')[0] || selectedDate.value
-    if (!grouped[date]) {
-      grouped[date] = []
+    const date = order.planningDate || order.date
+    if (date) {
+      const dateKey = typeof date === 'string' ? date.split('T')[0] : date.toString()
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = []
+      }
+      grouped[dateKey].push(order)
     }
-    grouped[date].push(order)
   })
 
-  // Sort by date
   return Object.keys(grouped)
     .sort()
-    .reduce((acc, date) => {
-      acc[date] = grouped[date].sort((a, b) => {
-        const timeA = a.startTime || ''
-        const timeB = b.startTime || ''
-        return timeA.localeCompare(timeB)
-      })
-      return acc
-    }, {} as Record<string, any[]>)
+    .map(date => ({
+      date,
+      orders: grouped[date],
+      totalCards: grouped[date].reduce((sum, o) => sum + (o.cardCount || 0), 0),
+      totalDuration: grouped[date].reduce((sum, o) => sum + (o.estimatedDurationMinutes || 0), 0)
+    }))
 })
 
 // Methods
 const goBack = () => {
-  router.push('/employees')
-}
-
-const getInitials = (name: string) => {
-  if (!name) return '??'
-  const parts = name.trim().split(' ')
-  if (parts.length >= 2) {
-    return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase()
-  }
-  return parts[0].charAt(0).toUpperCase()
-}
-
-const formatTime = (datetime: any) => {
-  if (!datetime) return 'N/A'
-  try {
-    if (typeof datetime === 'string' && datetime.match(/^\d{2}:\d{2}$/)) {
-      return datetime
-    }
-    const date = new Date(datetime)
-    if (isNaN(date.getTime())) return 'N/A'
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
-  } catch (e) {
-    return 'N/A'
-  }
-}
-
-const formatDuration = (minutes: number) => {
-  const hours = Math.floor(minutes / 60)
-  const mins = minutes % 60
-  if (hours > 0) return `${hours}h ${mins}m`
-  return `${mins}m`
-}
-
-const formatDate = (date: any) => {
-  if (!date) return 'N/A'
-  try {
-    return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  } catch (e) {
-    return 'N/A'
-  }
-}
-
-const formatDayName = (dateStr: string) => {
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('en-US', { weekday: 'long' })
-}
-
-const formatFullDate = (dateStr: string) => {
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-}
-
-const calculateDayCards = (dayOrders: any[]) => {
-  return dayOrders.reduce((sum, order) => sum + (order.cardCount || 0), 0)
-}
-
-const calculateDayDuration = (dayOrders: any[]) => {
-  return dayOrders.reduce((sum, order) => {
-    const duration = order.duration || order.durationMinutes || (order.cardCount * 3)
-    return sum + duration
-  }, 0)
-}
-
-const getDelaiClass = (delai: string) => {
-  const map: Record<string, string> = {
-    'X': 'excelsior',
-    'F+': 'fast-plus',
-    'F': 'fast',
-    'C': 'classic',
-    'E': 'economy'
-  }
-  return map[delai] || 'default'
-}
-
-const getDelaiLabel = (delai: string) => {
-  const map: Record<string, string> = {
-    'X': '⚡ Excelsior',
-    'F+': '🚀 Fast+',
-    'F': '⏩ Fast',
-    'C': '📦 Classic',
-    'E': '🐌 Economy'
-  }
-  return map[delai] || delai
-}
-
-const getStatusLabel = (status: any) => {
-  const statusMap: Record<string, string> = {
-    '2': 'To Grade',
-    '3': 'To Certify',
-    '4': 'To Prepare',
-    '0': 'Pending',
-    '1': 'In Progress'
-  }
-  return statusMap[status?.toString()] || 'Unknown'
-}
-
-const toggleOrderCards = async (order: any) => {
-  if (order.showCards) {
-    order.showCards = false
-    return
-  }
-
-  if (!order.cards || order.cards.length === 0) {
-    await loadOrderCards(order)
-  }
-
-  order.showCards = true
-}
-
-const loadOrderCards = async (order: any) => {
-  try {
-    order.loadingCards = true
-    const orderId = order.orderId || order.id
-
-    const response = await fetch(`${API_BASE_URL}/api/planning/order/${orderId}/cards`)
-
-    if (response.ok) {
-      const data = await response.json()
-      if (data.success && data.cards) {
-        order.cards = data.cards
-      } else {
-        order.cards = []
-      }
-    } else {
-      order.cards = []
-    }
-  } catch (error) {
-    console.error('Error loading cards:', error)
-    order.cards = []
-  } finally {
-    order.loadingCards = false
-  }
+  console.log('Going back to employees list')
+  emit('back')
 }
 
 const loadEmployeeData = async () => {
-  loadingEmployee.value = true
+  if (!props.employeeId) return
   try {
-    const response = await fetch(`${API_BASE_URL}/api/employees`)
+    const response = await fetch(`${API_BASE_URL}/api/employees/${props.employeeId}`)
     if (response.ok) {
-      const data = await response.json()
-      const employees = data.employees || data || []
-      const employee = employees.find((emp: any) => emp.id === props.employeeId)
-
-      if (employee) {
-        employeeData.value = {
-          ...employee,
-          fullName: employee.fullName || `${employee.firstName} ${employee.lastName}`,
-          name: employee.name || employee.fullName || `${employee.firstName} ${employee.lastName}`
-        }
-      }
+      employeeData.value = await response.json()
     }
   } catch (error) {
-    console.error('Error loading employee:', error)
-  } finally {
-    loadingEmployee.value = false
+    console.error('Error loading employee data:', error)
   }
 }
 
 const loadEmployeeOrders = async () => {
+  if (!props.employeeId) return
+
   loading.value = true
   try {
-    const response = await fetch(`${API_BASE_URL}/api/planning/employee/${props.employeeId}?date=${selectedDate.value}`)
+    const url = `${API_BASE_URL}/api/planning/employee/${props.employeeId}?date=${localSelectedDate.value}`
+    const response = await fetch(url)
 
     if (response.ok) {
       const data = await response.json()
-      if (data.success) {
-        orders.value = (data.orders || []).map((order: any) => ({
-          ...order,
-          showCards: false,
-          loadingCards: false,
-          cards: []
-        }))
+      if (data && data.orders && Array.isArray(data.orders)) {
+        orders.value = data.orders
+      } else if (data && Array.isArray(data.plannings)) {
+        orders.value = data.plannings
+      } else if (Array.isArray(data)) {
+        orders.value = data
       } else {
         orders.value = []
       }
@@ -452,16 +309,67 @@ const loadEmployeeOrders = async () => {
     console.error('Error loading orders:', error)
     orders.value = []
   } finally {
-    loading.value = false
+    loading.value = false  // Important: toujours exécuté
   }
 }
 
-// Lifecycle
+const handleDateChange = () => {
+  loadEmployeeOrders()  // Rechargement manuel uniquement
+}
+
+const getInitials = (name: string | undefined) => {
+  if (!name) return '??'
+  const parts = name.split(' ')
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+  }
+  return name.substring(0, 2).toUpperCase()
+}
+
+const formatDuration = (minutes: number) => {
+  if (!minutes) return '0h'
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  return mins > 0 ? `${hours}h${mins}m` : `${hours}h`
+}
+
+const formatDate = (date: any) => {
+  if (!date) return 'N/A'
+  try {
+    return new Date(date).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    })
+  } catch {
+    return 'N/A'
+  }
+}
+
+const formatTime = (time: any) => {
+  if (!time) return 'N/A'
+  try {
+    if (typeof time === 'string' && time.match(/^\d{2}:\d{2}$/)) {
+      return time
+    }
+    const date = new Date(time)
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+  } catch {
+    return 'N/A'
+  }
+}
+
+// PAS DE WATCH - chargement uniquement au montage
 onMounted(() => {
   loadEmployeeData()
   loadEmployeeOrders()
 })
 </script>
+
 
 <style scoped>
 .employee-detail-page {

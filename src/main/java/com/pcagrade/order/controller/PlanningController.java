@@ -543,32 +543,31 @@ public class PlanningController {
 
             // ✅ Query plannings filtered by status
             String sql = """
-                SELECT 
-                    HEX(p.id) as id,
-                    HEX(p.order_id) as orderId,
-                    HEX(p.employee_id) as employeeId,
-                    p.planning_date,
-                    p.start_time,
-                    p.end_time,
-                    p.estimated_duration_minutes,
-                    p.delai,
-                    p.status,
-                    p.completed,
-                    p.card_count,
-                    p.progress_percentage,
-                    p.created_at,
-                    p.updated_at,
-                    o.num_commande as orderNumber,
-                    o.num_commande_client as clientOrderNumber,
-                    CONCAT(COALESCE(e.first_name, 'Unknown'), ' ', COALESCE(e.last_name, 'User')) as employeeName,
-                    e.email as employeeEmail
-                FROM j_planning p
-                LEFT JOIN `order` o ON p.order_id = o.id  
-                LEFT JOIN j_employee e ON p.employee_id = e.id
-                WHERE p.status = ?
-                ORDER BY p.planning_date ASC, p.start_time ASC
-                """;
-
+            SELECT 
+                HEX(p.id) as id,
+                HEX(p.order_id) as orderId,
+                HEX(p.employee_id) as employeeId,
+                p.planning_date,
+                p.start_time,
+                p.end_time,
+                p.estimated_duration_minutes,
+                p.delai,
+                p.status,
+                p.completed,
+                p.card_count,
+                p.progress_percentage,
+                p.created_at,
+                p.updated_at,
+                o.num_commande as orderNumber,
+                o.num_commande_client as clientOrderNumber,
+                CONCAT(COALESCE(e.first_name, 'Unknown'), ' ', COALESCE(e.last_name, 'User')) as employeeName,
+                e.email as employeeEmail
+            FROM j_planning p
+            LEFT JOIN `order` o ON p.order_id = o.id  
+            LEFT JOIN j_employee e ON p.employee_id = e.id
+            WHERE p.status = ?
+            ORDER BY p.planning_date ASC, p.start_time ASC
+            """;
             Query query = entityManager.createNativeQuery(sql);
             query.setParameter(1, status);
 
@@ -670,5 +669,34 @@ public class PlanningController {
         int hours = minutes / 60;
         int remainingMinutes = minutes % 60;
         return remainingMinutes > 0 ? hours + "h" + remainingMinutes + "min" : hours + "h";
+    }
+
+    @PostMapping("/generate-debug")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> generateDebugPlanning() {
+        Map<String, Object> result = new HashMap<>();
+
+        // Get counts
+        String countSql = "SELECT status, COUNT(*) FROM `order` WHERE status IN (2,3,4) GROUP BY status";
+        Query countQuery = entityManager.createNativeQuery(countSql);
+        List<Object[]> counts = countQuery.getResultList();
+
+        result.put("orderCounts", counts);
+
+        // Get employee roles
+        String roleSql = """
+        SELECT g.group_name, COUNT(DISTINCT e.id)
+        FROM j_employee e
+        INNER JOIN j_employee_group eg ON e.id = eg.employee_id
+        INNER JOIN j_group g ON eg.group_id = g.id
+        WHERE e.active = 1 AND g.active = 1
+        GROUP BY g.group_name
+    """;
+        Query roleQuery = entityManager.createNativeQuery(roleSql);
+        List<Object[]> roles = roleQuery.getResultList();
+
+        result.put("employeeRoles", roles);
+
+        return ResponseEntity.ok(result);
     }
 }

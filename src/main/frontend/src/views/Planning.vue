@@ -1,13 +1,10 @@
 <template>
   <div class="planning-page">
     <h1 class="page-title">
-      <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-      </svg>
-      Global Planning Dashboard
+      <span>📅</span>
+      Global Planning
     </h1>
 
-    <!-- Generation Controls -->
     <div class="controls-section">
       <div class="control-group">
         <label class="control-label">
@@ -28,20 +25,18 @@
           <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
           </svg>
-          Time per Card:
+          Time/Card (min):
         </label>
-        <select v-model="config.cardProcessingTime" class="control-input">
-          <option :value="3">3 minutes</option>
-          <option :value="5">5 minutes</option>
-          <option :value="10">10 minutes</option>
-        </select>
+        <input
+          type="number"
+          v-model.number="config.cardProcessingTime"
+          min="1"
+          max="10"
+          class="control-input"
+        />
       </div>
 
-      <button
-        @click="generatePlanning"
-        :disabled="generating"
-        class="generate-btn"
-      >
+      <button @click="generatePlanning" class="generate-btn" :disabled="generating">
         <div v-if="generating" class="spinner"></div>
         <svg v-else class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
@@ -57,8 +52,77 @@
       </button>
     </div>
 
-    <!-- Three Panel View -->
+    <!-- Four Panel View -->
     <div class="panels-container">
+      <!-- Scanning Panel -->
+      <div class="panel scanning-panel">
+        <div class="panel-header">
+          <h2 class="panel-title">
+            <span class="panel-icon">📸</span>
+            Scanning (A_SCANNER)
+          </h2>
+          <div v-if="scanningData.plannings" class="panel-stats">
+            <span class="stat-badge">{{ scanningData.plannings.length }} tasks</span>
+            <span class="stat-badge">{{ scanningData.summary?.totalCards || 0 }} cards</span>
+            <span class="stat-badge">{{ scanningData.summary?.totalHours || 0 }}h</span>
+          </div>
+        </div>
+
+        <div v-if="loadingScanning" class="panel-loading">
+          <div class="spinner"></div>
+          <p>Loading scanning tasks...</p>
+        </div>
+
+        <div v-else-if="!scanningData.plannings || scanningData.plannings.length === 0" class="panel-empty">
+          <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          <p>No scanning tasks scheduled</p>
+        </div>
+
+        <div v-else class="panel-content">
+          <div
+            v-for="planning in scanningData.plannings"
+            :key="planning.id"
+            :class="['planning-card', `delai-${getDelaiClass(planning.delai)}`]"
+          >
+            <div class="card-header">
+              <span class="order-number">{{ planning.orderNumber }}</span>
+              <span :class="['delai-badge', `delai-${getDelaiClass(planning.delai)}`]">
+                {{ getDelaiLabel(planning.delai) }}
+              </span>
+            </div>
+            <div class="card-body">
+              <div class="card-info">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                </svg>
+                {{ planning.employeeName }}
+              </div>
+              <div class="card-info">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                {{ formatDate(planning.planningDate) }}
+              </div>
+              <div class="card-info">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                {{ formatTime(planning.startTime) }} - {{ formatTime(planning.endTime) }}
+              </div>
+              <div class="card-info">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343"/>
+                </svg>
+                {{ planning.cardCount }} cards • {{ planning.formattedDuration }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Grading Panel -->
       <div class="panel grading-panel">
         <div class="panel-header">
@@ -262,6 +326,7 @@
           </div>
         </div>
       </div>
+
     </div>
   </div>
 </template>
@@ -277,6 +342,7 @@ const generating = ref(false)
 const loadingGrading = ref(false)
 const loadingCertification = ref(false)
 const loadingPreparation = ref(false)
+const loadingScanning = ref(false)
 
 const config = ref({
   startDate: new Date().toISOString().split('T')[0],
@@ -286,6 +352,7 @@ const config = ref({
 const gradingData = ref<any>({ plannings: [], summary: null })
 const certificationData = ref<any>({ plannings: [], summary: null })
 const preparationData = ref<any>({ plannings: [], summary: null })
+const scanningData = ref<any>({ plannings: [], summary: null })
 
 // Methods
 const generatePlanning = async () => {
@@ -372,11 +439,27 @@ const loadPreparationPlannings = async () => {
   }
 }
 
+const loadScanningPlannings = async () => {
+  loadingScanning.value = true
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/planning/by-status/10`)
+    if (response.ok) {
+      const data = await response.json()
+      scanningData.value = data
+    }
+  } catch (error) {
+    console.error('Error loading scanning plannings:', error)
+  } finally {
+    loadingScanning.value = false
+  }
+}
+
 const refreshAllPanels = async () => {
   await Promise.all([
     loadGradingPlannings(),
     loadCertificationPlannings(),
-    loadPreparationPlannings()
+    loadPreparationPlannings(),
+    loadScanningPlannings()
   ])
 }
 
@@ -537,7 +620,7 @@ onMounted(() => {
 
 .panels-container {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 20px;
 }
 
@@ -561,6 +644,10 @@ onMounted(() => {
 
 .preparation-panel {
   border-top: 4px solid #10b981;
+}
+
+.scanning-panel {
+  border-top: 4px solid #f59e0b;
 }
 
 .panel-header {
@@ -729,7 +816,7 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-@media (max-width: 1400px) {
+@media (max-width: 1600px) {
   .panels-container {
     grid-template-columns: repeat(2, 1fr);
   }

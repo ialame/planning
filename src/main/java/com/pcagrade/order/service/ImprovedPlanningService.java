@@ -16,13 +16,14 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 🎯 IMPROVED PLANNING SERVICE - Role-Based Assignment
+ * Improved Planning Service - Role-Based Assignment with Scanner Support
  *
  * Features:
  * - Assigns orders based on status and employee roles
- * - A_NOTER (status=2) → ROLE_NOTEUR
- * - A_CERTIFIER (status=3) → ROLE_CERTIFICATEUR
- * - A_PREPARER (status=4) → ROLE_PREPARATEUR
+ * - A_NOTER (status=2) → ROLE_NOTEUR (3 min/card)
+ * - A_CERTIFIER (status=3) → ROLE_CERTIFICATEUR (3 min/card)
+ * - A_PREPARER (status=4) → ROLE_PREPARATEUR (3 min/card)
+ * - A_SCANNER (status=10) → ROLE_SCANNER (5 min/order - FIXED TIME)
  * - No start date filter - processes ALL pending orders
  * - Respects employee workload and working hours
  */
@@ -40,22 +41,21 @@ public class ImprovedPlanningService {
     private static final LocalTime WORK_START_TIME = LocalTime.of(9, 0);
     private static final LocalTime WORK_END_TIME = LocalTime.of(18, 0);
 
-    // Configurable break time between tasks
+    // Configurable parameters
     @Value("${planning.task.break.minutes:5}")
     private int taskBreakMinutes;
+
+    @Value("${planning.order.scanning.time:5}")
+    private int scanningTimePerOrder;
 
     // Order Status Constants
     private static final int STATUS_A_NOTER = 2;      // To be graded
     private static final int STATUS_A_CERTIFIER = 3;  // To be certified/encapsulated
     private static final int STATUS_A_PREPARER = 4;   // To be prepared
-
-    // Planning Status Constants (use order status as planning status)
-    private static final int PLANNING_STATUS_A_NOTER = 2;
-    private static final int PLANNING_STATUS_A_CERTIFIER = 3;
-    private static final int PLANNING_STATUS_A_PREPARER = 4;
+    private static final int STATUS_A_SCANNER = 10;   // To be scanned
 
     /**
-     * 🚀 MAIN PLANNING EXECUTION METHOD
+     * Main planning execution method with scanner support
      *
      * @param planningDate The date to schedule the work
      * @param cleanFirst Whether to clean existing planning for this date
@@ -82,8 +82,11 @@ public class ImprovedPlanningService {
             log.info("📋 Fetching orders A_PREPARER (status=4)...");
             List<Map<String, Object>> ordersToPrepare = getOrdersByStatus(STATUS_A_PREPARER);
 
-            log.info("📋 Found {} orders to grade, {} orders to certify, {} orders to prepare",
-                    ordersToGrade.size(), ordersToCertify.size(), ordersToPrepare.size());
+            log.info("📋 Fetching orders A_SCANNER (status=10)...");
+            List<Map<String, Object>> ordersToScan = getOrdersByStatus(STATUS_A_SCANNER);
+
+            log.info("📋 Found {} orders to grade, {} orders to certify, {} orders to prepare, {} orders to scan",
+                    ordersToGrade.size(), ordersToCertify.size(), ordersToPrepare.size(), ordersToScan.size());
 
             // Step 3: Get employees by role
             log.info("👥 Fetching ROLE_NOTEUR employees...");
@@ -95,8 +98,11 @@ public class ImprovedPlanningService {
             log.info("👥 Fetching ROLE_PREPARATEUR employees...");
             List<Map<String, Object>> preparers = getEmployeesByRole("ROLE_PREPARATEUR");
 
-            log.info("👥 Found {} graders, {} certifiers, {} preparers",
-                    graders.size(), certifiers.size(), preparers.size());
+            log.info("👥 Fetching ROLE_SCANNER employees...");
+            List<Map<String, Object>> scanners = getEmployeesByRole("ROLE_SCANNER");
+
+            log.info("👥 Found {} graders, {} certifiers, {} preparers, {} scanners",
+                    graders.size(), certifiers.size(), preparers.size(), scanners.size());
 
             // Validate we have employees
             if (graders.isEmpty() && !ordersToGrade.isEmpty()) {
@@ -117,6 +123,12 @@ public class ImprovedPlanningService {
                 return result;
             }
 
+            if (scanners.isEmpty() && !ordersToScan.isEmpty()) {
+                result.put("success", false);
+                result.put("message", "No SCANNER employees found but there are orders to scan");
+                return result;
+            }
+
             // Step 4: Track workloads
             Map<String, EmployeeWorkload> graderWorkloads = new HashMap<>();
             graders.forEach(e -> graderWorkloads.put((String) e.get("id"), new EmployeeWorkload(e)));
@@ -127,26 +139,32 @@ public class ImprovedPlanningService {
             Map<String, EmployeeWorkload> preparerWorkloads = new HashMap<>();
             preparers.forEach(e -> preparerWorkloads.put((String) e.get("id"), new EmployeeWorkload(e)));
 
+            Map<String, EmployeeWorkload> scannerWorkloads = new HashMap<>();
+            scanners.forEach(e -> scannerWorkloads.put((String) e.get("id"), new EmployeeWorkload(e)));
+
             // Step 5: Assign orders with specific status for each type
             int plannedGrading = assignOrdersToEmployees(ordersToGrade, graderWorkloads, planningDate, STATUS_A_NOTER);
             int plannedCertification = assignOrdersToEmployees(ordersToCertify, certifierWorkloads, planningDate, STATUS_A_CERTIFIER);
             int plannedPreparation = assignOrdersToEmployees(ordersToPrepare, preparerWorkloads, planningDate, STATUS_A_PREPARER);
+            int plannedScanning = assignScanningOrdersToEmployees(ordersToScan, scannerWorkloads, planningDate, STATUS_A_SCANNER);
 
             // Step 6: Build result
             result.put("success", true);
-            result.put("message", String.format("✅ Planning completed: %d grading + %d certification + %d preparation tasks",
-                    plannedGrading, plannedCertification, plannedPreparation));
-            result.put("totalPlanned", plannedGrading + plannedCertification + plannedPreparation);
+            result.put("message", String.format("✅ Planning completed: %d grading + %d certification + %d preparation + %d scanning tasks",
+                    plannedGrading, plannedCertification, plannedPreparation, plannedScanning));
+            result.put("totalPlanned", plannedGrading + plannedCertification + plannedPreparation + plannedScanning);
             result.put("plannedGrading", plannedGrading);
             result.put("plannedCertification", plannedCertification);
             result.put("plannedPreparation", plannedPreparation);
+            result.put("plannedScanning", plannedScanning);
             result.put("startDate", planningDate.toString());
             result.put("graderWorkloads", buildWorkloadSummary(graderWorkloads));
             result.put("certifierWorkloads", buildWorkloadSummary(certifierWorkloads));
             result.put("preparerWorkloads", buildWorkloadSummary(preparerWorkloads));
+            result.put("scannerWorkloads", buildWorkloadSummary(scannerWorkloads));
 
             log.info("🎉 Planning completed successfully: {} total tasks scheduled across multiple days starting from {}",
-                    plannedGrading + plannedCertification + plannedPreparation, planningDate);
+                    plannedGrading + plannedCertification + plannedPreparation + plannedScanning, planningDate);
             return result;
 
         } catch (Exception e) {
@@ -158,7 +176,7 @@ public class ImprovedPlanningService {
     }
 
     /**
-     * 🧹 Clean existing planning for a specific date
+     * Clean existing planning for a specific date
      */
     private void cleanExistingPlanning(LocalDate planningDate) {
         try {
@@ -173,12 +191,11 @@ public class ImprovedPlanningService {
     }
 
     /**
-     * 📋 Get orders by status (NO date filter)
-     * ✅ FIXED: Using real card count from card_certification_order
+     * Get orders by status (NO date filter)
+     * Using real card count from card_certification_order
      */
     private List<Map<String, Object>> getOrdersByStatus(int status) {
         try {
-            // ✅ FIXED: Added alias 'o' to table order for subquery
             String sql = """
                 SELECT 
                     HEX(o.id) as id,
@@ -233,8 +250,7 @@ public class ImprovedPlanningService {
     }
 
     /**
-     * 👥 Get employees by role (using j_employee_group and j_group)
-     * ✅ FIXED: Using correct table names j_employee_group and j_group
+     * Get employees by role (using j_employee_group and j_group)
      */
     private List<Map<String, Object>> getEmployeesByRole(String roleName) {
         try {
@@ -248,7 +264,7 @@ public class ImprovedPlanningService {
                 FROM j_employee e
                 INNER JOIN j_employee_group eg ON e.id = eg.employee_id
                 INNER JOIN j_group g ON eg.group_id = g.id
-                WHERE g.name = ? 
+                WHERE g.name = ?
                   AND e.active = 1
                   AND g.active = 1
                 ORDER BY e.first_name, e.last_name
@@ -280,13 +296,7 @@ public class ImprovedPlanningService {
     }
 
     /**
-     * 🎯 Assign orders to employees using least-loaded strategy
-     *
-     * @param orders List of orders to assign
-     * @param workloads Map of employee workloads
-     * @param planningDate Initial planning date
-     * @param planningStatus Status to set in j_planning (2=A_NOTER, 3=A_CERTIFIER, 4=A_PREPARER)
-     * @return Number of orders successfully planned
+     * Assign orders to employees using least-loaded strategy (for card-based tasks)
      */
     private int assignOrdersToEmployees(
             List<Map<String, Object>> orders,
@@ -294,105 +304,152 @@ public class ImprovedPlanningService {
             LocalDate planningDate,
             int planningStatus) {
 
+        if (orders.isEmpty() || workloads.isEmpty()) {
+            log.info("⏭️ Skipping assignment for status {}: {} orders, {} employees",
+                    planningStatus, orders.size(), workloads.size());
+            return 0;
+        }
+
         int plannedCount = 0;
 
         for (Map<String, Object> order : orders) {
-            // Find least loaded employee
-            EmployeeWorkload leastLoaded = workloads.values().stream()
-                    .min(Comparator.comparingInt(EmployeeWorkload::getCurrentWorkloadMinutes))
-                    .orElse(null);
+            String orderId = (String) order.get("id");
+            Integer cardCount = (Integer) order.get("cardCount");
+            String delai = (String) order.getOrDefault("delai", "C");
 
-            if (leastLoaded == null) {
-                log.warn("⚠️ No employees available for order: {}", order.get("orderNumber"));
+            if (cardCount == null || cardCount == 0) {
+                log.warn("⚠️ Order {} has no cards, skipping", orderId);
                 continue;
             }
 
-            // Calculate task details
-            int cardCount = (Integer) order.get("cardCount");
             int durationMinutes = cardCount * TIME_PER_CARD_MINUTES;
 
-            // Calculate start time with improved logic (tasks chain across days)
-            LocalDateTime startTime = calculateStartTime(leastLoaded, planningDate, durationMinutes);
+            // Find least loaded employee
+            EmployeeWorkload leastLoaded = workloads.values().stream()
+                    .min(Comparator.comparingInt(EmployeeWorkload::getTotalMinutes))
+                    .orElse(null);
+
+            if (leastLoaded == null) {
+                log.warn("⚠️ No employee available for order {}", orderId);
+                continue;
+            }
+
+            LocalDateTime startTime = calculateStartTime(leastLoaded, durationMinutes);
             LocalDateTime endTime = startTime.plusMinutes(durationMinutes);
 
-            // Get the actual planning date (may be different from initial planningDate)
-            LocalDate actualPlanningDate = startTime.toLocalDate();
-
-            // Save planning with actual date (may span multiple days)
             String planningId = UUID.randomUUID().toString().replace("-", "");
+
             boolean saved = savePlanning(
                     planningId,
-                    (String) order.get("id"),
+                    orderId,
                     leastLoaded.getEmployeeId(),
-                    actualPlanningDate,
+                    startTime.toLocalDate(),
                     startTime,
                     endTime,
                     durationMinutes,
-                    (String) order.get("delai"),
+                    delai,
                     cardCount,
                     planningStatus
             );
 
             if (saved) {
-                leastLoaded.addWorkload(durationMinutes, endTime);
+                leastLoaded.addTask(durationMinutes, startTime, endTime);
                 plannedCount++;
-                log.info("✅ Planned order {} for employee {} on {} (status={}, workload: {}min, tasks span {} days)",
-                        order.get("orderNumber"),
-                        leastLoaded.getEmployeeName(),
-                        actualPlanningDate,
-                        planningStatus,
-                        leastLoaded.getCurrentWorkloadMinutes(),
-                        java.time.temporal.ChronoUnit.DAYS.between(planningDate, actualPlanningDate) + 1);
             }
         }
 
+        log.info("✅ Assigned {} orders (status={}) to {} employees",
+                plannedCount, planningStatus, workloads.size());
         return plannedCount;
     }
 
     /**
-     * ⏰ Calculate optimal start time for a task
-     * ✅ IMPROVED: Tasks chain from 9am to 5pm, then continue next day
-     * Uses configurable break time between tasks
+     * Assign scanning orders to employees
+     * Scanning takes FIXED time per order (not per card)
      */
-    private LocalDateTime calculateStartTime(EmployeeWorkload workload, LocalDate planningDate, int taskDurationMinutes) {
-        // If employee has no previous tasks, start at 9am on planning date
-        if (workload.getLastEndTime() == null) {
-            return planningDate.atTime(WORK_START_TIME);
+    private int assignScanningOrdersToEmployees(
+            List<Map<String, Object>> orders,
+            Map<String, EmployeeWorkload> workloads,
+            LocalDate planningDate,
+            int planningStatus) {
+
+        if (orders.isEmpty() || workloads.isEmpty()) {
+            log.info("⏭️ Skipping scanning assignment: {} orders, {} employees",
+                    orders.size(), workloads.size());
+            return 0;
         }
 
-        // Calculate when this task would start (after last task + configurable break)
+        int plannedCount = 0;
+
+        for (Map<String, Object> order : orders) {
+            String orderId = (String) order.get("id");
+            Integer cardCount = (Integer) order.get("cardCount");
+            String delai = (String) order.getOrDefault("delai", "C");
+
+            // FIXED duration per order regardless of card count
+            int durationMinutes = scanningTimePerOrder;
+
+            // Find least loaded employee
+            EmployeeWorkload leastLoaded = workloads.values().stream()
+                    .min(Comparator.comparingInt(EmployeeWorkload::getTotalMinutes))
+                    .orElse(null);
+
+            if (leastLoaded == null) {
+                log.warn("⚠️ No scanner employee available for order {}", orderId);
+                continue;
+            }
+
+            LocalDateTime startTime = calculateStartTime(leastLoaded, durationMinutes);
+            LocalDateTime endTime = startTime.plusMinutes(durationMinutes);
+
+            String planningId = UUID.randomUUID().toString().replace("-", "");
+
+            boolean saved = savePlanning(
+                    planningId,
+                    orderId,
+                    leastLoaded.getEmployeeId(),
+                    startTime.toLocalDate(),
+                    startTime,
+                    endTime,
+                    durationMinutes,
+                    delai,
+                    cardCount != null ? cardCount : 0,
+                    planningStatus
+            );
+
+            if (saved) {
+                leastLoaded.addTask(durationMinutes, startTime, endTime);
+                plannedCount++;
+            }
+        }
+
+        log.info("✅ Assigned {} scanning orders to {} scanner employees",
+                plannedCount, workloads.size());
+        return plannedCount;
+    }
+
+    /**
+     * Calculate start time for a task considering employee's current workload
+     */
+    private LocalDateTime calculateStartTime(EmployeeWorkload workload, int durationMinutes) {
+        if (workload.getLastEndTime() == null) {
+            return workload.getCurrentDate().atTime(WORK_START_TIME);
+        }
+
         LocalDateTime potentialStartTime = workload.getLastEndTime().plusMinutes(taskBreakMinutes);
+        LocalDateTime potentialEndTime = potentialStartTime.plusMinutes(durationMinutes);
 
-        // Calculate when this task would end
-        LocalDateTime potentialEndTime = potentialStartTime.plusMinutes(taskDurationMinutes);
-
-        // Check if the task would fit in the same working day
         if (potentialStartTime.toLocalTime().isBefore(WORK_END_TIME) &&
                 potentialEndTime.toLocalTime().isBefore(WORK_END_TIME.plusMinutes(1))) {
-            // Task fits in the same day
             return potentialStartTime;
         }
 
-        // Task doesn't fit - move to next day at 9am
         LocalDate nextDay = potentialStartTime.toLocalDate().plusDays(1);
         return nextDay.atTime(WORK_START_TIME);
     }
 
     /**
-     * 💾 Save planning to database
-     *
-     * ✅ FIXED: Using INT for status instead of String 'SCHEDULED'
-     *
-     * @param planningId Unique planning ID
-     * @param orderId Order ID
-     * @param employeeId Employee ID
-     * @param planningDate Date of the planning
-     * @param startTime Start time
-     * @param endTime End time
-     * @param durationMinutes Duration in minutes
-     * @param delai Priority code (X, F+, F, C, E)
-     * @param cardCount Number of cards
-     * @param status Planning status (2=A_NOTER, 3=A_CERTIFIER, 4=A_PREPARER)
+     * Save planning to database
      */
     private boolean savePlanning(
             String planningId,
@@ -407,7 +464,6 @@ public class ImprovedPlanningService {
             int status) {
 
         try {
-            // ✅ Use provided status (2, 3, or 4)
             String sql = """
                 INSERT INTO j_planning 
                 (id, order_id, employee_id, planning_date, start_time, end_time,
@@ -445,71 +501,56 @@ public class ImprovedPlanningService {
     }
 
     /**
-     * 📊 Build workload summary for response
+     * Build workload summary for response
      */
     private List<Map<String, Object>> buildWorkloadSummary(Map<String, EmployeeWorkload> workloads) {
         return workloads.values().stream().map(w -> {
             Map<String, Object> summary = new HashMap<>();
             summary.put("employeeId", w.getEmployeeId());
             summary.put("employeeName", w.getEmployeeName());
-            summary.put("totalMinutes", w.getCurrentWorkloadMinutes());
-            summary.put("totalHours", String.format("%.1f", w.getCurrentWorkloadMinutes() / 60.0));
+            summary.put("totalMinutes", w.getTotalMinutes());
+            summary.put("totalHours", String.format("%.1f", w.getTotalMinutes() / 60.0).replace('.', ','));
             summary.put("workloadPercentage", w.getWorkloadPercentage());
-            summary.put("status", w.getStatus());
+            summary.put("status", w.getWorkloadPercentage() > 100 ? "FULL" : "AVAILABLE");
             return summary;
         }).collect(Collectors.toList());
     }
 
-    // ========== INNER CLASS: EMPLOYEE WORKLOAD TRACKING ==========
-
     /**
-     * 👤 Track individual employee workload
+     * Inner class to track employee workload
      */
-    private static class EmployeeWorkload {
-        private final Map<String, Object> employee;
-        private int currentWorkloadMinutes;
-        private LocalDateTime lastEndTime;
+    private class EmployeeWorkload {
+        private final String employeeId;
+        private final String employeeName;
+        private final int workHoursPerDay;
+        private int totalMinutes = 0;
+        private LocalDateTime lastEndTime = null;
+        private LocalDate currentDate;
 
         public EmployeeWorkload(Map<String, Object> employee) {
-            this.employee = employee;
-            this.currentWorkloadMinutes = 0;
-            this.lastEndTime = null;
+            this.employeeId = (String) employee.get("id");
+            this.employeeName = employee.get("firstName") + " " + employee.get("lastName");
+            this.workHoursPerDay = (Integer) employee.get("workHoursPerDay");
+            this.currentDate = LocalDate.now();
         }
 
-        public void addWorkload(int minutes, LocalDateTime endTime) {
-            this.currentWorkloadMinutes += minutes;
+        public void addTask(int minutes, LocalDateTime startTime, LocalDateTime endTime) {
+            this.totalMinutes += minutes;
             this.lastEndTime = endTime;
+            if (startTime.toLocalDate().isAfter(this.currentDate)) {
+                this.currentDate = startTime.toLocalDate();
+            }
         }
 
-        public int getCurrentWorkloadMinutes() {
-            return currentWorkloadMinutes;
-        }
-
-        public LocalDateTime getLastEndTime() {
-            return lastEndTime;
-        }
-
-        public String getEmployeeId() {
-            return (String) employee.get("id");
-        }
-
-        public String getEmployeeName() {
-            return employee.get("firstName") + " " + employee.get("lastName");
-        }
+        public String getEmployeeId() { return employeeId; }
+        public String getEmployeeName() { return employeeName; }
+        public int getTotalMinutes() { return totalMinutes; }
+        public LocalDateTime getLastEndTime() { return lastEndTime; }
+        public LocalDate getCurrentDate() { return currentDate; }
 
         public int getWorkloadPercentage() {
-            int workHoursPerDay = (Integer) employee.getOrDefault("workHoursPerDay", 8);
-            int maxMinutesPerDay = workHoursPerDay * 60;
-            return maxMinutesPerDay > 0 ?
-                    (int) ((currentWorkloadMinutes * 100.0) / maxMinutesPerDay) : 0;
-        }
-
-        public String getStatus() {
-            int percentage = getWorkloadPercentage();
-            if (percentage >= 100) return "FULL";
-            if (percentage >= 75) return "HIGH";
-            if (percentage >= 50) return "MEDIUM";
-            return "LOW";
+            int dailyCapacity = workHoursPerDay * 60;
+            return dailyCapacity > 0 ? (totalMinutes * 100) / dailyCapacity : 0;
         }
     }
 }
