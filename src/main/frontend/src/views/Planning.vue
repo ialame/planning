@@ -1,1127 +1,743 @@
 <template>
   <div class="planning-page">
-    <!-- Header -->
-    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-2xl font-bold text-gray-900">📅 Planning Management</h1>
-          <p class="text-gray-600 mt-1">Generate and manage work assignments for Pokemon card orders</p>
-        </div>
-        <div class="flex space-x-3">
-          <button
-            @click="testPlanningEndpoints"
-            class="btn-secondary"
-          >
-            🔍 Debug API
-          </button>
-          <button
-            @click="refreshData"
-            :disabled="loading"
-            class="btn-primary"
-          >
-            {{ loading ? '⏳ Loading...' : '🔄 Refresh' }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Statistics Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-      <div class="card">
-        <div class="flex items-center">
-          <div class="bg-blue-500 rounded-lg p-3 mr-4">
-            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
-            </svg>
-          </div>
-          <div>
-            <p class="text-sm text-gray-600">Total Orders</p>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.totalOrders }}</p>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="flex items-center">
-          <div class="bg-green-500 rounded-lg p-3 mr-4">
-            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-          </div>
-          <div>
-            <p class="text-sm text-gray-600">Planned Orders</p>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.plannedOrders }}</p>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="flex items-center">
-          <div class="bg-orange-500 rounded-lg p-3 mr-4">
-            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-          </div>
-          <div>
-            <p class="text-sm text-gray-600">Employees Used</p>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.employeeCount }}</p>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="flex items-center">
-          <div class="bg-purple-500 rounded-lg p-3 mr-4">
-            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-            </svg>
-          </div>
-          <div>
-            <p class="text-sm text-gray-600">Total Plannings</p>
-            <p class="text-2xl font-semibold text-gray-900">{{ plannings.length }}</p>
-            <p v-if="duplicateStats.totalDuplicates > 0" class="text-xs text-red-600">
-              ⚠️ {{ duplicateStats.totalDuplicates }} duplicates
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Planning Configuration -->
-    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-      <h2 class="text-lg font-semibold text-gray-900 mb-4">Planning Configuration</h2>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">
-            Start Date
-          </label>
-          <input
-            v-model="config.startDate"
-            type="date"
-            class="input-field"
-            :min="'2025-01-01'"
-          >
-          <p class="text-xs text-gray-500 mt-1">
-            📦 All orders from this date onwards will be planned (Currently: ~50 orders from June 1st, 2025)
-          </p>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Time per Card (minutes)</label>
-          <input
-            v-model.number="config.cardProcessingTime"
-            type="number"
-            min="1"
-            max="10"
-            class="input-field"
-          >
-          <p class="text-xs text-gray-500 mt-1">Current: {{ CARD_PROCESSING_TIME }}min (from config)</p>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Priority Mode</label>
-          <select v-model="config.priorityMode" class="input-field">
-            <option value="urgent">Urgent First</option>
-            <option value="balanced">Balanced</option>
-            <option value="efficiency">Efficiency First</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- Options -->
-      <div class="mt-4 flex items-center space-x-6">
-        <label class="flex items-center">
-          <input
-            v-model="config.redistributeOverload"
-            type="checkbox"
-            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          >
-          <span class="ml-2 text-sm text-gray-700">Redistribute overload</span>
-        </label>
-        <label class="flex items-center">
-          <input
-            v-model="config.respectPriorities"
-            type="checkbox"
-            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          >
-          <span class="ml-2 text-sm text-gray-700">Respect priorities</span>
-        </label>
-      </div>
-
-      <!-- Action Buttons -->
-      <div class="mt-6 flex space-x-3">
-        <button
-          @click="generatePlanning"
-          :disabled="generating"
-          class="btn-primary"
-        >
-          {{ generating ? '⏳ Generating...' : '🚀 Generate Planning' }}
-        </button>
-
-        <!-- AJOUTEZ CES NOUVEAUX BOUTONS ICI -->
-        <button
-          @click="generatePlanningWithGreedy"
-          :disabled="generating"
-          class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50"
-        >
-          {{ generating ? '⏳ Generating...' : '🎲 Try Greedy Algorithm' }}
-        </button>
-
-        <button
-          @click="debugPlanningGeneration"
-          class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-        >
-          🔍 Debug Planning
-        </button>
-
-        <button
-          @click="optimizePlanning"
-          :disabled="optimizing"
-          class="btn-secondary"
-        >
-          {{ optimizing ? '⏳ Optimizing...' : '⚡ Optimize Planning' }}
-        </button>
-        <button
-          @click="cleanupData"
-          class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
-        >
-          🗑️ Clean Up
-        </button>
-        <button
-          @click="removeDuplicates"
-          class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
-        >
-          🧹 Remove Duplicates
-        </button>
-      </div>
-    </div>
-
-    <!-- Plannings List -->
-    <div v-if="plannings.length > 0" class="bg-white rounded-lg shadow-md overflow-hidden">
-      <div class="px-6 py-4 border-b border-gray-200">
-        <h2 class="text-lg font-semibold text-gray-900">Current Plannings</h2>
-      </div>
-
-      <div class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-200">
-          <thead class="bg-gray-50">
-          <tr>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-          </tr>
-          </thead>
-          <tbody class="bg-white divide-y divide-gray-200">
-          <tr
-            v-for="planning in groupedPlannings"
-            :key="planning.id"
-            :class="[
-                'hover:bg-gray-50',
-                planning.isDuplicate ? 'bg-red-50 border-l-4 border-red-400' : ''
-              ]"
-          >
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-              {{ formatDate(planning.planningDate) }}
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap">
-              <div class="text-sm font-medium text-gray-900">{{ planning.employeeName || 'Unknown Employee' }}</div>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap">
-              <div class="text-sm font-medium text-gray-900">
-                {{ planning.orderNumber || `Order ${planning.orderId}` }}
-                <span v-if="planning.isDuplicate" class="ml-2 text-xs bg-red-100 text-red-600 px-2 py-1 rounded">
-                    ⚠️ Duplicate ({{ planning.duplicateCount }})
-                  </span>
-              </div>
-              <div class="text-sm text-gray-500">{{ planning.cardCount || 0 }} cards</div>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-              {{ planning.startTime }} - {{ planning.endTime }}
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap">
-              <div class="text-sm font-medium text-gray-900">{{ formatDuration(planning.durationMinutes) }}</div>
-              <div class="text-sm text-gray-500">
-                {{ planning.cardCount || 0 }} cards × {{ CARD_PROCESSING_TIME }}min
-              </div>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap">
-                <span :class="[
-                  'inline-flex px-2 py-1 text-xs font-semibold rounded-full',
-                  planning.completed ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                ]">
-                  {{ planning.completed ? 'Completed' : 'Pending' }}
-                </span>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-              <button
-                @click="viewPlanningDetails(planning)"
-                class="text-blue-600 hover:text-blue-900 mr-3"
-              >
-                View
-              </button>
-              <button
-                @click="editPlanning(planning)"
-                class="text-green-600 hover:text-green-900"
-              >
-                Edit
-              </button>
-            </td>
-          </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Empty State -->
-    <div v-else-if="!loading" class="bg-white rounded-lg shadow-md p-8 text-center">
-      <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+    <h1 class="page-title">
+      <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
       </svg>
-      <h3 class="text-lg font-medium text-gray-900 mb-2">No plannings found</h3>
-      <p class="text-gray-600 mb-4">Start by generating your first planning</p>
+      Global Planning Dashboard
+    </h1>
+
+    <!-- Generation Controls -->
+    <div class="controls-section">
+      <div class="control-group">
+        <label class="control-label">
+          <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          </svg>
+          Start Date:
+        </label>
+        <input
+          type="date"
+          v-model="config.startDate"
+          class="control-input"
+        />
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">
+          <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          Time per Card:
+        </label>
+        <select v-model="config.cardProcessingTime" class="control-input">
+          <option :value="3">3 minutes</option>
+          <option :value="5">5 minutes</option>
+          <option :value="10">10 minutes</option>
+        </select>
+      </div>
+
       <button
         @click="generatePlanning"
-        class="btn-primary"
+        :disabled="generating"
+        class="generate-btn"
       >
-        🚀 Generate First Planning
+        <div v-if="generating" class="spinner"></div>
+        <svg v-else class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+        {{ generating ? 'Generating...' : 'Generate Planning' }}
+      </button>
+
+      <button @click="refreshAllPanels" class="refresh-btn">
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Refresh All
       </button>
     </div>
 
-    <!-- Loading State -->
-    <div v-if="loading" class="bg-white rounded-lg shadow-md p-8 text-center">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-      <p class="text-gray-600">{{ loadingMessage || 'Loading plannings...' }}</p>
+    <!-- Three Panel View -->
+    <div class="panels-container">
+      <!-- Grading Panel -->
+      <div class="panel grading-panel">
+        <div class="panel-header">
+          <h2 class="panel-title">
+            <span class="panel-icon">📝</span>
+            Grading (A_NOTER)
+          </h2>
+          <div v-if="gradingData.plannings" class="panel-stats">
+            <span class="stat-badge">{{ gradingData.plannings.length }} tasks</span>
+            <span class="stat-badge">{{ gradingData.summary?.totalCards || 0 }} cards</span>
+            <span class="stat-badge">{{ gradingData.summary?.totalHours || 0 }}h</span>
+          </div>
+        </div>
+
+        <div v-if="loadingGrading" class="panel-loading">
+          <div class="spinner"></div>
+          <p>Loading grading tasks...</p>
+        </div>
+
+        <div v-else-if="!gradingData.plannings || gradingData.plannings.length === 0" class="panel-empty">
+          <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+          </svg>
+          <p>No grading tasks scheduled</p>
+        </div>
+
+        <div v-else class="panel-content">
+          <div
+            v-for="planning in gradingData.plannings"
+            :key="planning.id"
+            :class="['planning-card', `delai-${getDelaiClass(planning.delai)}`]"
+          >
+            <div class="card-header">
+              <span class="order-number">{{ planning.orderNumber }}</span>
+              <span :class="['delai-badge', `delai-${getDelaiClass(planning.delai)}`]">
+                {{ getDelaiLabel(planning.delai) }}
+              </span>
+            </div>
+            <div class="card-body">
+              <div class="card-info">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                </svg>
+                {{ planning.employeeName }}
+              </div>
+              <div class="card-info">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                {{ formatDate(planning.planningDate) }}
+              </div>
+              <div class="card-info">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                {{ formatTime(planning.startTime) }} - {{ formatTime(planning.endTime) }}
+              </div>
+              <div class="card-info">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343"/>
+                </svg>
+                {{ planning.cardCount }} cards • {{ planning.formattedDuration }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Certification Panel -->
+      <div class="panel certification-panel">
+        <div class="panel-header">
+          <h2 class="panel-title">
+            <span class="panel-icon">🔒</span>
+            Certification (A_CERTIFIER)
+          </h2>
+          <div v-if="certificationData.plannings" class="panel-stats">
+            <span class="stat-badge">{{ certificationData.plannings.length }} tasks</span>
+            <span class="stat-badge">{{ certificationData.summary?.totalCards || 0 }} cards</span>
+            <span class="stat-badge">{{ certificationData.summary?.totalHours || 0 }}h</span>
+          </div>
+        </div>
+
+        <div v-if="loadingCertification" class="panel-loading">
+          <div class="spinner"></div>
+          <p>Loading certification tasks...</p>
+        </div>
+
+        <div v-else-if="!certificationData.plannings || certificationData.plannings.length === 0" class="panel-empty">
+          <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+          </svg>
+          <p>No certification tasks scheduled</p>
+        </div>
+
+        <div v-else class="panel-content">
+          <div
+            v-for="planning in certificationData.plannings"
+            :key="planning.id"
+            :class="['planning-card', `delai-${getDelaiClass(planning.delai)}`]"
+          >
+            <div class="card-header">
+              <span class="order-number">{{ planning.orderNumber }}</span>
+              <span :class="['delai-badge', `delai-${getDelaiClass(planning.delai)}`]">
+                {{ getDelaiLabel(planning.delai) }}
+              </span>
+            </div>
+            <div class="card-body">
+              <div class="card-info">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                </svg>
+                {{ planning.employeeName }}
+              </div>
+              <div class="card-info">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                {{ formatDate(planning.planningDate) }}
+              </div>
+              <div class="card-info">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                {{ formatTime(planning.startTime) }} - {{ formatTime(planning.endTime) }}
+              </div>
+              <div class="card-info">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343"/>
+                </svg>
+                {{ planning.cardCount }} cards • {{ planning.formattedDuration }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Preparation Panel -->
+      <div class="panel preparation-panel">
+        <div class="panel-header">
+          <h2 class="panel-title">
+            <span class="panel-icon">📦</span>
+            Preparation (A_PREPARER)
+          </h2>
+          <div v-if="preparationData.plannings" class="panel-stats">
+            <span class="stat-badge">{{ preparationData.plannings.length }} tasks</span>
+            <span class="stat-badge">{{ preparationData.summary?.totalCards || 0 }} cards</span>
+            <span class="stat-badge">{{ preparationData.summary?.totalHours || 0 }}h</span>
+          </div>
+        </div>
+
+        <div v-if="loadingPreparation" class="panel-loading">
+          <div class="spinner"></div>
+          <p>Loading preparation tasks...</p>
+        </div>
+
+        <div v-else-if="!preparationData.plannings || preparationData.plannings.length === 0" class="panel-empty">
+          <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+          </svg>
+          <p>No preparation tasks scheduled</p>
+        </div>
+
+        <div v-else class="panel-content">
+          <div
+            v-for="planning in preparationData.plannings"
+            :key="planning.id"
+            :class="['planning-card', `delai-${getDelaiClass(planning.delai)}`]"
+          >
+            <div class="card-header">
+              <span class="order-number">{{ planning.orderNumber }}</span>
+              <span :class="['delai-badge', `delai-${getDelaiClass(planning.delai)}`]">
+                {{ getDelaiLabel(planning.delai) }}
+              </span>
+            </div>
+            <div class="card-body">
+              <div class="card-info">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                </svg>
+                {{ planning.employeeName }}
+              </div>
+              <div class="card-info">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                {{ formatDate(planning.planningDate) }}
+              </div>
+              <div class="card-info">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                {{ formatTime(planning.startTime) }} - {{ formatTime(planning.endTime) }}
+              </div>
+              <div class="card-info">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343"/>
+                </svg>
+                {{ planning.cardCount }} cards • {{ planning.formattedDuration }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { API_BASE_URL, API_ENDPOINTS } from '@/config/api'
-// ========== CONSTANTS ==========
-// Configuration from environment or default values
-const CARD_PROCESSING_TIME = parseInt(import.meta.env.VITE_CARD_PROCESSING_TIME || '3') // minutes per card
-const DEFAULT_WORK_HOURS = parseInt(import.meta.env.VITE_DEFAULT_WORK_HOURS || '8') // hours per day
+import { ref, onMounted, inject } from 'vue'
 
-console.log(`⚙️ Configuration: ${CARD_PROCESSING_TIME}min per card, ${DEFAULT_WORK_HOURS}h per day`)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+const showNotification = inject('showNotification', (msg: string, type: string) => console.log(msg))
 
-
-// ========== STATE ==========
-const loading = ref(false)
+// State
 const generating = ref(false)
-const optimizing = ref(false)
-const loadingMessage = ref('')
+const loadingGrading = ref(false)
+const loadingCertification = ref(false)
+const loadingPreparation = ref(false)
 
-const plannings = ref<Planning[]>([])
-
-const config = ref<PlanningConfig>({
-  startDate: '2025-06-01', // ✅ Default: June 1st, 2025
-  cardProcessingTime: CARD_PROCESSING_TIME,
-  priorityMode: 'urgent',
-  redistributeOverload: true,
-  respectPriorities: true
+const config = ref({
+  startDate: new Date().toISOString().split('T')[0],
+  cardProcessingTime: 3
 })
 
+const gradingData = ref<any>({ plannings: [], summary: null })
+const certificationData = ref<any>({ plannings: [], summary: null })
+const preparationData = ref<any>({ plannings: [], summary: null })
 
-
-const stats = ref({
-  totalOrders: 0,
-  plannedOrders: 0,
-  pendingOrders: 0,
-  efficiency: 0,
-  employeeCount: 0,
-  duplicateCount: 0
-})
-
-// Computed for duplicate statistics
-const duplicateStats = computed(() => {
-  const duplicateGroups = new Map()
-
-  plannings.value.forEach(planning => {
-    const key = `${planning.orderNumber}_${planning.planningDate}_${planning.startTime}`
-    if (!duplicateGroups.has(key)) {
-      duplicateGroups.set(key, [])
-    }
-    duplicateGroups.get(key).push(planning)
-  })
-
-  const duplicateGroupsArray = Array.from(duplicateGroups.values()).filter(group => group.length > 1)
-  const totalDuplicates = duplicateGroupsArray.reduce((sum, group) => sum + (group.length - 1), 0)
-
-  return {
-    duplicateGroups: duplicateGroupsArray.length,
-    totalDuplicates
-  }
-})
-
-// ========== COMPUTED ==========
-const minDate = computed(() => {
-  return new Date().toISOString().split('T')[0]
-})
-
-const groupedPlannings = computed(() => {
-  const sorted = plannings.value.sort((a, b) => {
-    const dateA = new Date(`${a.planningDate} ${a.startTime}`)
-    const dateB = new Date(`${b.planningDate} ${b.startTime}`)
-    return dateA.getTime() - dateB.getTime()
-  })
-
-  // Mark potential duplicates (same order at same time)
-  const duplicateGroups = new Map()
-  sorted.forEach(planning => {
-    const key = `${planning.orderNumber}_${planning.planningDate}_${planning.startTime}`
-    if (!duplicateGroups.has(key)) {
-      duplicateGroups.set(key, [])
-    }
-    duplicateGroups.get(key).push(planning)
-  })
-
-  // Add isDuplicate flag
-  return sorted.map(planning => {
-    const key = `${planning.orderNumber}_${planning.planningDate}_${planning.startTime}`
-    const group = duplicateGroups.get(key)
-    return {
-      ...planning,
-      isDuplicate: group && group.length > 1,
-      duplicateCount: group ? group.length : 1
-    }
-  })
-})
-
-// ========== METHODS ==========
-function getNextBusinessDay(): string {
-  // Par défaut, utiliser le 1er juin 2025
-  return '2025-06-01'
-}
-
-const refreshData = async () => {
-  await Promise.all([
-    loadStats(),
-    loadPlannings()
-  ])
-}
-
-const loadStats = async () => {
-  try {
-    // Try multiple endpoints for stats
-    const endpoints = [
-      API_BASE_URL+'/api/planning/stats',
-      API_BASE_URL+'/api/orders/frontend/stats'
-    ]
-
-    for (const endpoint of endpoints) {
-      try {
-        const response = await fetch(endpoint)
-        if (response.ok) {
-          const data = await response.json()
-          console.log(`✅ Stats loaded from ${endpoint}:`, data)
-
-          stats.value = {
-            totalOrders: data.totalCommandes || data.totalOrders || 0,
-            plannedOrders: data.commandesEnCours || data.plannedOrders || 0,
-            pendingOrders: data.commandesEnAttente || data.pendingOrders || 0,
-            efficiency: data.efficiency || 85,
-            employeeCount: data.employesActifs || data.employeeCount || 0
-          }
-          break
-        }
-      } catch (error) {
-        console.warn(`⚠️ ${endpoint} failed:`, error)
-        continue
-      }
-    }
-  } catch (error) {
-    console.error('❌ Error loading stats:', error)
-  }
-}
-
-const loadPlannings = async () => {
-  loading.value = true
-  loadingMessage.value = 'Loading plannings...'
-
-  try {
-    // Try different endpoints in order of preference
-    const endpoints = [
-      `${API_BASE_URL}/api/planning`
-    ]
-
-    let rawPlannings: any[] = []
-
-    for (const endpoint of endpoints) {
-      try {
-        console.log('🔄 Trying plannings endpoint:', endpoint)
-        const response = await fetch(endpoint)
-
-        if (response.ok) {
-          const data = await response.json()
-          console.log(`✅ Plannings loaded from ${endpoint}:`, data)
-
-          // Handle different response formats
-          rawPlannings = data.plannings || data.data || data || []
-          break
-        } else {
-          console.log(`❌ Failed to load from ${endpoint}: ${response.status}`)
-        }
-      } catch (error) {
-        console.log(`❌ Error with endpoint ${endpoint}:`, error)
-        continue
-      }
-    }
-
-    if (rawPlannings.length === 0) {
-      console.warn('⚠️ No raw plannings data found')
-      plannings.value = []
-      showNotification('No plannings found', 'info')
-      return
-    }
-
-    console.log(`📊 Raw plannings data (first 3):`, rawPlannings.slice(0, 3))
-
-    // Map raw data to Planning objects with detailed logging
-    const mappedPlannings = rawPlannings.map((rawPlanning, index) => {
-      const mapped = mapPlanning(rawPlanning)
-
-      // Log first few mappings for debugging
-      if (index < 3) {
-        console.log(`🔍 Mapping planning ${index}:`, {
-          raw: rawPlanning,
-          mapped: {
-            id: mapped.id,
-            orderId: mapped.orderId,
-            employeeId: mapped.employeeId,
-            employeeName: mapped.employeeName,
-            orderNumber: mapped.orderNumber,
-            planningDate: mapped.planningDate,
-            startTime: mapped.startTime
-          }
-        })
-      }
-
-      return mapped
-    })
-
-    // Remove duplicates with detailed logging
-    const uniquePlannings: Planning[] = []
-    const seen = new Set()
-    const duplicateInfo: Array<{key: string, count: number}> = []
-
-    for (const planning of mappedPlannings) {
-      // Create unique key with detailed logging
-      const uniqueKey = `${planning.orderId}_${planning.employeeId}_${planning.planningDate}_${planning.startTime}`
-
-      if (!seen.has(uniqueKey)) {
-        seen.add(uniqueKey)
-        uniquePlannings.push(planning)
-      } else {
-        // Log duplicate details
-        const existingDup = duplicateInfo.find(d => d.key === uniqueKey)
-        if (existingDup) {
-          existingDup.count++
-        } else {
-          duplicateInfo.push({ key: uniqueKey, count: 2 })
-        }
-
-        console.warn(`🔄 Duplicate planning detected:`, {
-          key: uniqueKey,
-          orderNumber: planning.orderNumber,
-          employeeName: planning.employeeName,
-          date: planning.planningDate,
-          time: planning.startTime,
-          orderId: planning.orderId,
-          employeeId: planning.employeeId
-        })
-      }
-    }
-
-    // Log filtering summary
-    console.log(`🎯 Filtering summary:`)
-    console.log(`  Raw plannings: ${rawPlannings.length}`)
-    console.log(`  After mapping: ${mappedPlannings.length}`)
-    console.log(`  After deduplication: ${uniquePlannings.length}`)
-    console.log(`  Unique keys seen: ${seen.size}`)
-    console.log(`  Duplicate groups: ${duplicateInfo.length}`)
-
-    // Log some unique keys to see if they look correct
-    console.log(`🔍 Sample unique keys:`, Array.from(seen).slice(0, 5))
-
-    // If all plannings were filtered out, there's likely an issue with the mapping
-    if (rawPlannings.length > 0 && uniquePlannings.length === 0) {
-      console.error('❌ ALL PLANNINGS FILTERED OUT - LIKELY MAPPING ISSUE')
-      console.error('Sample raw planning data:', rawPlannings[0])
-      console.error('Sample mapped planning:', mappedPlannings[0])
-
-      // Emergency fallback - show plannings without deduplication
-      console.warn('🚨 Emergency fallback: showing all plannings without deduplication')
-      plannings.value = mappedPlannings
-      showNotification(`⚠️ Loaded ${mappedPlannings.length} plannings (deduplication disabled due to mapping issues)`, 'warning')
-      return
-    }
-
-    plannings.value = uniquePlannings
-
-    console.log(`🎯 Final plannings: ${rawPlannings.length} raw → ${uniquePlannings.length} unique`)
-
-    if (rawPlannings.length !== uniquePlannings.length) {
-      const duplicatesRemoved = rawPlannings.length - uniquePlannings.length
-      showNotification(`Loaded ${uniquePlannings.length} unique plannings (${duplicatesRemoved} duplicates filtered)`, 'success')
-    } else {
-      showNotification(`Loaded ${uniquePlannings.length} plannings`, 'success')
-    }
-
-  } catch (error) {
-    console.error('❌ Error loading plannings:', error)
-    showNotification('Error loading plannings', 'error')
-  } finally {
-    loading.value = false
-    loadingMessage.value = ''
-  }
-}
-
-// Remplacez la fonction mapPlanning dans Planning.vue par cette version avec debug
-
-const mapPlanning = (planningData: any): Planning => {
-  console.log('🔍 Raw planning data:', planningData)
-
-  // Calculate card count and duration
-  const cardCount = planningData.cardCount || planningData.nombreCartes || planningData.cards_count || 0
-  const calculatedDuration = cardCount > 0 ? cardCount * CARD_PROCESSING_TIME : (planningData.durationMinutes || planningData.dureeMinutes || planningData.duree_minutes || 60)
-
-  const mapped = {
-    id: planningData.id || `planning-${Date.now()}`,
-    orderId: planningData.orderId || planningData.order_id || '',
-    employeeId: planningData.employeeId || planningData.employe_id || '',
-    employeeName: planningData.employeeName || planningData.employe_nom || planningData.employeFullName || 'Unknown Employee',
-    orderNumber: planningData.orderNumber || planningData.numeroCommande || planningData.num_commande || `Order ${planningData.orderId}`,
-    planningDate: planningData.planningDate || planningData.datePlanifiee || planningData.date_planification || new Date().toISOString().split('T')[0],
-    startTime: planningData.startTime || planningData.heureDebut || planningData.heure_debut || '09:00',
-    endTime: planningData.endTime || planningData.heureFin || planningData.heure_fin || calculateEndTime(planningData.startTime || '09:00', calculatedDuration),
-    durationMinutes: calculatedDuration,
-    cardCount,
-    priority: planningData.priority || planningData.priorite || 'MEDIUM',
-    status: planningData.status || planningData.statut || 'PENDING',
-    completed: planningData.completed || planningData.terminee || false,
-    notes: planningData.notes || `${cardCount} cards × ${CARD_PROCESSING_TIME}min = ${calculatedDuration}min`
-  }
-
-  console.log('✅ Mapped planning:', {
-    id: mapped.id,
-    orderId: mapped.orderId,
-    employeeId: mapped.employeeId,
-    employeeName: mapped.employeeName,
-    orderNumber: mapped.orderNumber,
-    planningDate: mapped.planningDate,
-    startTime: mapped.startTime
-  })
-
-  return mapped
-}
-
-// Helper function to calculate end time based on start time and duration
-const calculateEndTime = (startTime: string, durationMinutes: number): string => {
-  try {
-    const [hours, minutes] = startTime.split(':').map(Number)
-    const startDate = new Date()
-    startDate.setHours(hours, minutes, 0, 0)
-
-    const endDate = new Date(startDate.getTime() + durationMinutes * 60000)
-
-    return endDate.toTimeString().slice(0, 5) // Format HH:MM
-  } catch (error) {
-    // Fallback calculation
-    const totalMinutes = durationMinutes + (parseInt(startTime.split(':')[0]) * 60) + parseInt(startTime.split(':')[1] || '0')
-    const endHours = Math.floor(totalMinutes / 60) % 24
-    const endMins = totalMinutes % 60
-    return `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`
-  }
-}
-
+// Methods
 const generatePlanning = async () => {
   if (generating.value) return
 
   generating.value = true
-  loadingMessage.value = 'Generating planning for all orders from selected date...'
 
   try {
-    console.log('🚀 Starting planning generation with config:', config.value)
-
-    const planningConfig = {
-      startDate: config.value.startDate,
-      timePerCard: config.value.cardProcessingTime,
-      cleanFirst: true,
-      priorityMode: config.value.priorityMode,
-      planAllOrders: true
-    }
-
-    console.log('📋 Sending request to /api/planning/generate with:', planningConfig)
+    console.log('🚀 Generating planning...')
 
     const response = await fetch(`${API_BASE_URL}/api/planning/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(planningConfig)
+      body: JSON.stringify({
+        planningDate: config.value.startDate,
+        timePerCard: config.value.cardProcessingTime,
+        cleanFirst: true
+      })
     })
-
-    console.log('📡 Response status:', response.status, response.statusText)
 
     if (response.ok) {
       const result = await response.json()
-      console.log('✅ Full planning generation result:', result)
+      console.log('✅ Planning generated:', result)
 
-      // ✅ CORRECT PROPERTY NAMES FROM BACKEND
-      const ordersAnalyzed = result.totalOrdersAnalyzed || result.ordersAnalyzed || 0
-      const planningsCreated = result.planningsCreated || result.processedOrders || 0
-      const employeesUsed = result.activeEmployees || result.employeesUsed || 0
-      const success = result.success !== false // Default to true unless explicitly false
-
-      console.log(`📊 PARSED PLANNING SUMMARY:`)
-      console.log(`  📦 Orders analyzed: ${ordersAnalyzed}`)
-      console.log(`  ✅ Plannings created: ${planningsCreated}`)
-      console.log(`  👥 Employees available: ${employeesUsed}`)
-      console.log(`  ✅ Success flag: ${success}`)
-
-      // Show distribution per employee if available
-      if (result.distributionSummary) {
-        console.log(`📋 Distribution per employee:`)
-        Object.entries(result.distributionSummary).forEach(([name, count]) => {
-          console.log(`  ${name}: ${count} orders`)
-        })
-      }
-
-      // ✅ IMPROVED SUCCESS/FAILURE DETECTION
-      if (success && (planningsCreated > 0 || result.message?.includes('SUCCESS'))) {
-        showNotification(
-          `✅ SUCCESS! ${planningsCreated} plannings created from ${ordersAnalyzed} orders analyzed (${employeesUsed} employees available)`,
-          'success'
-        )
-      } else if (success && planningsCreated === 0 && ordersAnalyzed === 0) {
-        showNotification(
-          `⚠️ No orders found to plan from date ${config.value.startDate}. Try selecting an earlier date or check if orders exist in the database.`,
-          'warning'
-        )
-      } else if (success && planningsCreated === 0 && ordersAnalyzed > 0) {
-        showNotification(
-          `⚠️ Found ${ordersAnalyzed} orders but no plannings were created. Orders may already be planned or there might be an issue with the planning algorithm.`,
-          'warning'
-        )
+      if (result.success) {
+        showNotification(`✅ Planning generated: ${result.totalPlanned} tasks created!`, 'success')
+        await refreshAllPanels()
       } else {
-        // Show error with backend message
-        const errorMessage = result.message || result.detailedError || 'Unknown error occurred'
-        showNotification(
-          `❌ Planning failed: ${errorMessage}`,
-          'error'
-        )
+        showNotification(`⚠️ ${result.message}`, 'warning')
       }
-
-      // Always reload plannings to show current state
-      await loadPlannings()
-
-    } else {
-      // Handle HTTP errors
-      let errorText
-      try {
-        const errorResponse = await response.json()
-        errorText = errorResponse.message || errorResponse.error || `HTTP ${response.status}`
-      } catch {
-        errorText = await response.text() || `HTTP ${response.status}`
-      }
-
-      console.error('❌ Planning generation HTTP error:', response.status, errorText)
-      showNotification(
-        `❌ Server Error (${response.status}): ${errorText}`,
-        'error'
-      )
-    }
-
-  } catch (error) {
-    console.error('❌ Planning generation exception:', error)
-
-    // Improved error message
-    let errorMessage = 'Network or parsing error'
-    if (error.message) {
-      errorMessage = error.message
-    } else if (error.name === 'TypeError') {
-      errorMessage = 'Network connection failed - is the backend server running?'
-    }
-
-    showNotification(
-      `❌ Error: ${errorMessage}`,
-      'error'
-    )
-  } finally {
-    generating.value = false
-    loadingMessage.value = ''
-  }
-}
-const optimizePlanning = async () => {
-  optimizing.value = true
-  loadingMessage.value = 'Optimizing planning...'
-
-  try {
-    // For now, just reload the data
-    await loadPlannings()
-    showNotification('Planning optimization completed', 'success')
-  } catch (error) {
-    console.error('❌ Error optimizing planning:', error)
-    showNotification('Error optimizing planning', 'error')
-  } finally {
-    optimizing.value = false
-    loadingMessage.value = ''
-  }
-}
-
-const removeDuplicates = async () => {
-  try {
-    // Client-side duplicate removal (immediate)
-    const originalCount = plannings.value.length
-    const uniquePlannings = []
-    const seen = new Set()
-
-    for (const planning of plannings.value) {
-      const uniqueKey = `${planning.orderId}_${planning.employeeId}_${planning.planningDate}_${planning.startTime}`
-
-      if (!seen.has(uniqueKey)) {
-        seen.add(uniqueKey)
-        uniquePlannings.push(planning)
-      }
-    }
-
-    plannings.value = uniquePlannings
-    const duplicatesRemoved = originalCount - uniquePlannings.length
-
-    if (duplicatesRemoved > 0) {
-      showNotification(`Removed ${duplicatesRemoved} duplicate plannings`, 'success')
-
-      // Try to clean duplicates on backend too
-      try {
-        await fetch(`${API_BASE_URL}/api/planning/remove-duplicates`, {
-          method: 'POST'
-        })
-        console.log('✅ Backend duplicates cleanup requested')
-      } catch (backendError) {
-        console.warn('⚠️ Backend duplicate cleanup failed:', backendError)
-      }
-    } else {
-      showNotification('No duplicates found', 'success')
-    }
-
-  } catch (error) {
-    console.error('❌ Error removing duplicates:', error)
-    showNotification('Error removing duplicates', 'error')
-  }
-}
-
-const cleanupData = async () => {
-  if (!confirm('Are you sure you want to clean up old planning data?')) {
-    return
-  }
-
-  try {
-    // Try cleanup endpoint
-    const response = await fetch(`${API_BASE_URL}/api/planning/cleanup`, {
-      method: 'DELETE'
-    })
-
-    if (response.ok) {
-      showNotification('Planning data cleaned up successfully', 'success')
-      await loadPlannings()
     } else {
       throw new Error(`HTTP ${response.status}`)
     }
   } catch (error) {
-    console.error('❌ Error cleaning up data:', error)
-    showNotification('Error cleaning up data', 'error')
-  }
-}
-
-// Debug function to test all planning endpoints
-const testPlanningEndpoints = async () => {
-  console.log('🔍 === TESTING PLANNING ENDPOINTS ===')
-
-  const endpoints = [
-    { name: 'view-simple', url: `${API_BASE_URL}/api/planning/view-simple` },
-    { name: 'planning', url: `${API_BASE_URL}/api/planning` },
-    { name: 'dashboard-stats', url: `${API_BASE_URL}/api/dashboard/stats` }
-  ]
-
-  for (const endpoint of endpoints) {
-    try {
-      console.log(`🔄 Testing: ${endpoint.url}`)
-      const response = await fetch(endpoint.url)
-
-      if (response.ok) {
-        const data = await response.json()
-        console.log(`✅ ${endpoint.name} - SUCCESS:`, data)
-
-        if (Array.isArray(data)) {
-          console.log(`  📊 Array with ${data.length} items`)
-          if (data.length > 0) {
-            console.log(`  📋 First item structure:`, Object.keys(data[0]))
-          }
-        } else if (typeof data === 'object') {
-          console.log(`  📊 Object with keys:`, Object.keys(data))
-        }
-      } else {
-        console.log(`❌ ${endpoint.name} - FAILED: ${response.status}`)
-      }
-    } catch (error) {
-      console.log(`❌ ${endpoint.name} - ERROR:`, error.message)
-    }
-  }
-
-  console.log('🏁 === ENDPOINT TESTING COMPLETE ===')
-  showNotification('Check console for detailed endpoint test results', 'success')
-}
-
-const viewPlanningDetails = (planning: Planning) => {
-  console.log('View planning details:', planning)
-  // Implement details view
-}
-
-const editPlanning = (planning: Planning) => {
-  console.log('Edit planning:', planning)
-  // Implement edit functionality
-}
-
-const formatDate = (dateStr: string): string => {
-  try {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    })
-  } catch {
-    return dateStr || 'Unknown date'
-  }
-}
-
-const formatDuration = (minutes: number): string => {
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-
-  if (hours > 0) {
-    return `${hours}h ${remainingMinutes}m`
-  }
-  return `${remainingMinutes}m`
-}
-
-// Simple notification function
-const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
-  console.log(`${type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️'} ${message}`)
-  // You can implement a real toast notification here
-}
-
-// ========== LIFECYCLE ==========
-onMounted(() => {
-  console.log('📅 Planning page mounted - Loading data...')
-  refreshData()
-})
-
-
-// Ajoutez cette fonction après les autres méthodes comme generatePlanning, loadPlannings, etc.
-const debugPlanningGeneration = async () => {
-  try {
-    console.log('🔍 === DEBUGGING PLANNING GENERATION ===')
-
-    // 1. Test debug endpoint
-    console.log('📊 Step 1: Testing debug endpoint...')
-    const debugResponse = await fetch(`${API_BASE_URL}/api/planning/debug?startDate=2025-06-01`)
-    if (debugResponse.ok) {
-      const debugData = await debugResponse.json()
-      console.log('✅ Debug endpoint response:', debugData)
-
-      if (debugData.orders && debugData.orders.length > 0) {
-        console.log('📋 Sample orders:', debugData.orders.slice(0, 3))
-      }
-
-      if (debugData.employees && debugData.employees.length > 0) {
-        console.log('👥 Sample employees:', debugData.employees)
-      }
-
-    } else {
-      console.error('❌ Debug endpoint failed:', debugResponse.status)
-    }
-
-    console.log('🏁 === DEBUG COMPLETE ===')
-    showNotification('Debug complete - check console for detailed results', 'info')
-
-  } catch (error) {
-    console.error('❌ Debug failed:', error)
-    showNotification('Debug failed - check console for errors', 'error')
-  }
-}
-const generatePlanningWithGreedy = async () => {
-  if (generating.value) return
-
-  generating.value = true
-  loadingMessage.value = 'Generating planning with Greedy algorithm...'
-
-  try {
-    console.log('🚀 Using Greedy Planning Service...')
-
-    // Nettoyer d'abord
-    try {
-      const cleanupResponse = await fetch(`${API_BASE_URL}/api/planning/cleanup`, {
-        method: 'DELETE'
-      })
-      if (cleanupResponse.ok) {
-        const cleanupResult = await cleanupResponse.json()
-        console.log('🗑️ Cleanup successful:', cleanupResult)
-      }
-    } catch (e) {
-      console.warn('⚠️ Cleanup skipped:', e)
-    }
-
-    // Utiliser le service Greedy qui fonctionne mieux
-    const currentDate = new Date(config.value.startDate)
-    const day = currentDate.getDate()
-    const month = currentDate.getMonth() + 1 // JavaScript months are 0-indexed
-    const year = currentDate.getFullYear()
-
-    console.log(`📅 Generating for date: ${day}/${month}/${year}`)
-
-    // Utiliser le nouvel endpoint ultra simple
-    const greedyResponse = await fetch(`${API_BASE_URL}/api/planning/greedy-simple`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        startDate: config.value.startDate,
-        timePerCard: config.value.cardProcessingTime
-      })
-    })
-
-    if (greedyResponse.ok) {
-      const result = await greedyResponse.json()
-      console.log('✅ Greedy planning result:', result)
-
-      const planningsCreated = result.planningsCount || result.plannings?.length || 0
-      const success = result.success !== false
-
-      if (success && planningsCreated > 0) {
-        showNotification(
-          `✅ SUCCESS! Created ${planningsCreated} plannings using Greedy algorithm`,
-          'success'
-        )
-      } else {
-        showNotification(
-          result.message || 'No plannings created',
-          planningsCreated > 0 ? 'warning' : 'error'
-        )
-      }
-
-      await loadPlannings()
-
-    } else {
-      // Fallback to the other service
-      console.log('⚠️ Greedy failed, trying PlanningService...')
-
-      const planningServiceResponse = await fetch(`${API_BASE_URL}/api/planning-service/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dateDebut: config.value.startDate,
-          tempsParCarte: config.value.cardProcessingTime,
-          nombreEmployes: 10
-        })
-      })
-
-      if (planningServiceResponse.ok) {
-        const serviceResult = await planningServiceResponse.json()
-        console.log('✅ PlanningService result:', serviceResult)
-
-        const ordersProcessed = serviceResult.ordersProcessed || 0
-        if (ordersProcessed > 0) {
-          showNotification(
-            `✅ SUCCESS! Processed ${ordersProcessed} orders with PlanningService`,
-            'success'
-          )
-        } else {
-          showNotification(serviceResult.message || 'No orders processed', 'warning')
-        }
-
-        await loadPlannings()
-
-      } else {
-        throw new Error('Both planning services failed')
-      }
-    }
-
-  } catch (error) {
-    console.error('❌ Greedy planning error:', error)
-    showNotification(`❌ Error: ${error.message}`, 'error')
+    console.error('❌ Generation error:', error)
+    showNotification('❌ Failed to generate planning', 'error')
   } finally {
     generating.value = false
-    loadingMessage.value = ''
   }
 }
 
-
-const generateRoleBasedPlanning = async () => {
+const loadGradingPlannings = async () => {
+  loadingGrading.value = true
   try {
-    const response = await fetch(`${API_BASE_URL}/api/planning/generate-role-based`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        planningDate: '2025-06-01',
-        cleanFirst: true
-      })
-    });
-
-    const result = await response.json();
-
-    if (result.success) {
-      console.log('✅ Planning generated:', result.message);
-      console.log('Orders assigned:', result.totalOrdersAssigned);
-      console.log('Noteurs:', result.noteurWorkloads);
-      console.log('Certificateurs:', result.certificateurWorkloads);
-    } else {
-      console.error('❌ Planning failed:', result.message);
+    const response = await fetch(`${API_BASE_URL}/api/planning/by-status/2`)
+    if (response.ok) {
+      const data = await response.json()
+      gradingData.value = data
     }
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error loading grading plannings:', error)
+  } finally {
+    loadingGrading.value = false
   }
 }
-// Remplacer temporairement generatePlanning par cette version
-// ou ajouter un nouveau bouton pour tester
 
+const loadCertificationPlannings = async () => {
+  loadingCertification.value = true
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/planning/by-status/3`)
+    if (response.ok) {
+      const data = await response.json()
+      certificationData.value = data
+    }
+  } catch (error) {
+    console.error('Error loading certification plannings:', error)
+  } finally {
+    loadingCertification.value = false
+  }
+}
+
+const loadPreparationPlannings = async () => {
+  loadingPreparation.value = true
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/planning/by-status/4`)
+    if (response.ok) {
+      const data = await response.json()
+      preparationData.value = data
+    }
+  } catch (error) {
+    console.error('Error loading preparation plannings:', error)
+  } finally {
+    loadingPreparation.value = false
+  }
+}
+
+const refreshAllPanels = async () => {
+  await Promise.all([
+    loadGradingPlannings(),
+    loadCertificationPlannings(),
+    loadPreparationPlannings()
+  ])
+}
+
+const formatDate = (date: any) => {
+  if (!date) return 'N/A'
+  try {
+    return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  } catch (e) {
+    return 'N/A'
+  }
+}
+
+const formatTime = (time: any) => {
+  if (!time) return 'N/A'
+  try {
+    if (typeof time === 'string' && time.match(/^\d{2}:\d{2}$/)) return time
+    const date = new Date(time)
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+  } catch (e) {
+    return 'N/A'
+  }
+}
+
+const getDelaiClass = (delai: string) => {
+  const map: Record<string, string> = {
+    'X': 'excelsior',
+    'F+': 'fast-plus',
+    'F': 'fast',
+    'C': 'classic',
+    'E': 'economy'
+  }
+  return map[delai] || 'default'
+}
+
+const getDelaiLabel = (delai: string) => {
+  const map: Record<string, string> = {
+    'X': '⚡ Excelsior',
+    'F+': '🚀 Fast+',
+    'F': '⏩ Fast',
+    'C': '📦 Classic',
+    'E': '🐌 Economy'
+  }
+  return map[delai] || delai
+}
+
+// Lifecycle
+onMounted(() => {
+  refreshAllPanels()
+})
 </script>
 
 <style scoped>
 .planning-page {
-  max-width: 1400px;
+  max-width: 1800px;
   margin: 0 auto;
   padding: 24px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-/* Loading spinner */
-.animate-spin {
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 32px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 24px 0;
+}
+
+.controls-section {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  flex-wrap: wrap;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.control-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: #374151;
+  white-space: nowrap;
+}
+
+.control-input {
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.generate-btn, .refresh-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.generate-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.generate-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.generate-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.refresh-btn {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  color: #374151;
+}
+
+.refresh-btn:hover {
+  background: #f3f4f6;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
   animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 
-/* Responsive design */
-@media (max-width: 768px) {
-  .planning-page {
-    padding: 16px;
-  }
+.panels-container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
 
-  .grid-cols-1 {
-    grid-template-columns: repeat(1, minmax(0, 1fr));
+.panel {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 250px);
+}
+
+.grading-panel {
+  border-top: 4px solid #3b82f6;
+}
+
+.certification-panel {
+  border-top: 4px solid #8b5cf6;
+}
+
+.preparation-panel {
+  border-top: 4px solid #10b981;
+}
+
+.panel-header {
+  padding: 20px;
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 12px 0;
+}
+
+.panel-icon {
+  font-size: 24px;
+}
+
+.panel-stats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stat-badge {
+  padding: 4px 10px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.panel-loading, .panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #9ca3af;
+}
+
+.empty-icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 12px;
+}
+
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.planning-card {
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 16px;
+  transition: all 0.2s;
+}
+
+.planning-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateX(2px);
+}
+
+.planning-card.delai-excelsior {
+  border-left-color: #ef4444;
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.05) 0%, white 100%);
+}
+
+.planning-card.delai-fast-plus {
+  border-left-color: #f97316;
+  background: linear-gradient(90deg, rgba(249, 115, 22, 0.05) 0%, white 100%);
+}
+
+.planning-card.delai-fast {
+  border-left-color: #eab308;
+  background: linear-gradient(90deg, rgba(234, 179, 8, 0.05) 0%, white 100%);
+}
+
+.planning-card.delai-classic {
+  border-left-color: #3b82f6;
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.05) 0%, white 100%);
+}
+
+.planning-card.delai-economy {
+  border-left-color: #10b981;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.05) 0%, white 100%);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.order-number {
+  font-weight: 700;
+  color: #111827;
+  font-size: 15px;
+}
+
+.delai-badge {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.delai-badge.delai-excelsior {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.delai-badge.delai-fast-plus {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.delai-badge.delai-fast {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.delai-badge.delai-classic {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.delai-badge.delai-economy {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.card-info .icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1400px) {
+  .panels-container {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
-@media (min-width: 768px) {
-  .md\:grid-cols-3 {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .md\:grid-cols-4 {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+@media (max-width: 900px) {
+  .panels-container {
+    grid-template-columns: 1fr;
   }
 }
 </style>

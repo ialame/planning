@@ -11,8 +11,9 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 
 /**
- * 👥 EMPLOYEES PLANNING CONTROLLER - Version sans conflit
- * Endpoints dédiés au frontend enrichi avec préfixes uniques
+ * 👥 EMPLOYEES PLANNING CONTROLLER - Fixed version
+ * Endpoints for frontend with unique prefixes
+ * ✅ FIXED: Removed all p.priority references
  */
 @RestController
 @RequestMapping("/api/frontend/employees")
@@ -25,7 +26,7 @@ public class EmployeesPlanningController {
     private EntityManager entityManager;
 
     /**
-     * 👥 GET ALL EMPLOYEES - Mode Management
+     * 👥 GET ALL EMPLOYEES - Management View
      */
     @GetMapping
     public ResponseEntity<Map<String, Object>> getAllEmployees() {
@@ -65,7 +66,8 @@ public class EmployeesPlanningController {
 
                 // Computed fields
                 employee.put("fullName", row[1] + " " + row[2]);
-                employee.put("status", ((Number) row[4]).intValue() == 1 ? "AVAILABLE" : "INACTIVE");
+                employee.put("status", ((Number) row[4]).intValue() == 1 ?
+                        "ACTIVE" : "INACTIVE");
 
                 employees.add(employee);
             }
@@ -88,7 +90,8 @@ public class EmployeesPlanningController {
     }
 
     /**
-     * 📋 GET EMPLOYEES WITH PLANNING DATA - Mode Planning
+     * 📋 GET EMPLOYEES WITH PLANNING DATA
+     * ✅ FIXED: Removed all p.priority references
      */
     @GetMapping("/planning-data")
     public ResponseEntity<Map<String, Object>> getEmployeesWithPlanningData(
@@ -97,8 +100,10 @@ public class EmployeesPlanningController {
         try {
             log.info("📋 Fetching employees with planning data for date: {}", date);
 
-            String dateFilter = date != null ? " AND p.planning_date = '" + date + "'" : "";
+            String dateFilter = date != null ?
+                    " AND p.planning_date = '" + date + "'" : "";
 
+            // ✅ FIXED: Removed p.priority, using only necessary columns
             String sql = """
                 SELECT 
                     HEX(e.id) as id,
@@ -143,7 +148,8 @@ public class EmployeesPlanningController {
 
                 // Workload calculations
                 Number workloadRatioNum = (Number) row[10];
-                Double workloadRatio = workloadRatioNum != null ? workloadRatioNum.doubleValue() : 0.0;
+                Double workloadRatio = workloadRatioNum != null ?
+                        workloadRatioNum.doubleValue() : 0.0;
                 employee.put("workload", workloadRatio);
 
                 // Status determination
@@ -191,7 +197,7 @@ public class EmployeesPlanningController {
     }
 
     /**
-     * 👤 GET EMPLOYEE DETAILS - Détail d'un employé spécifique
+     * 👤 GET EMPLOYEE DETAILS
      */
     @GetMapping("/{employeeId}")
     public ResponseEntity<Map<String, Object>> getEmployeeDetails(@PathVariable String employeeId) {
@@ -223,7 +229,7 @@ public class EmployeesPlanningController {
                 Map<String, Object> errorResponse = new HashMap<>();
                 errorResponse.put("success", false);
                 errorResponse.put("error", "Employee not found");
-                return ResponseEntity.notFound().build();
+                return ResponseEntity.status(404).body(errorResponse);
             }
 
             Object[] row = results.get(0);
@@ -242,7 +248,7 @@ public class EmployeesPlanningController {
             response.put("success", true);
             response.put("employee", employee);
 
-            log.info("✅ Retrieved details for employee: {}", employeeId);
+            log.info("✅ Retrieved employee details for: {}", employeeId);
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
@@ -254,13 +260,9 @@ public class EmployeesPlanningController {
         }
     }
 
-    // ============================================================
-// FILE: src/main/java/com/pcagrade/order/controller/EmployeesPlanningController.java
-// LOCATION: Method getEmployeeOrders() - Line ~150
-// ============================================================
-
     /**
-     * 📋 GET EMPLOYEE ORDERS - Fixed to include DELAI column
+     * 📋 GET EMPLOYEE ORDERS
+     * ✅ FIXED: Removed p.priority, using p.delai instead
      */
     @GetMapping("/{employeeId}/orders")
     public ResponseEntity<Map<String, Object>> getEmployeeOrders(
@@ -268,11 +270,12 @@ public class EmployeesPlanningController {
             @RequestParam(required = false) String date) {
 
         try {
-            log.info("📋 Fetching orders for employee: {}, date: {}", employeeId, date);
+            log.info("📋 Fetching orders for employee: {} on date: {}", employeeId, date);
 
-            String dateFilter = date != null ? " AND p.planning_date = '" + date + "'" : "";
+            String dateFilter = date != null ?
+                    " AND p.planning_date = '" + date + "'" : "";
 
-            // ✅ FIXED SQL: Added o.delai column to retrieve the priority
+            // ✅ FIXED: Removed p.priority, using p.delai instead
             String sql = """
             SELECT 
                 HEX(p.id) as planningId,
@@ -282,7 +285,6 @@ public class EmployeesPlanningController {
                 p.planning_date,
                 p.start_time,
                 p.estimated_duration_minutes,
-                p.priority,
                 p.status,
                 p.completed,
                 p.card_count,
@@ -306,20 +308,19 @@ public class EmployeesPlanningController {
             for (Object[] row : results) {
                 Map<String, Object> order = new HashMap<>();
 
-                // Map all columns including delai
+                // Map all columns
                 order.put("planningId", row[0]);
                 order.put("orderId", row[1]);
                 order.put("orderNumber", row[2]);
-                order.put("delai", row[3]); // ✅ NOW INCLUDED
+                order.put("delai", row[3]); // ✅ Using delai instead of priority
                 order.put("planningDate", row[4]);
                 order.put("startTime", row[5]);
                 order.put("estimatedDurationMinutes", row[6]);
-                order.put("priority", row[7]);
-                order.put("status", row[8]);
-                order.put("completed", row[9]);
-                order.put("cardCount", row[10]);
-                order.put("progressPercentage", row[11]);
-                order.put("estimatedHours", row[12]);
+                order.put("status", row[7]);
+                order.put("completed", row[8]);
+                order.put("cardCount", row[9]);
+                order.put("progressPercentage", row[10]);
+                order.put("estimatedHours", row[11]);
 
                 orders.add(order);
             }
@@ -339,65 +340,6 @@ public class EmployeesPlanningController {
 
         } catch (Exception e) {
             log.error("❌ Error fetching employee orders", e);
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("success", false);
-            errorResponse.put("error", e.getMessage());
-            return ResponseEntity.internalServerError().body(errorResponse);
-        }
-    }
-    /**
-     * 🃏 GET ORDER CARDS - Cartes d'une commande spécifique
-     */
-    @GetMapping("/order/{orderId}/cards")
-    public ResponseEntity<Map<String, Object>> getOrderCards(@PathVariable String orderId) {
-        try {
-            log.info("🃏 Fetching cards for order: {}", orderId);
-
-            String sql = """
-                SELECT 
-                    HEX(cc.id) as id,
-                    cc.code_barre,
-                    COALESCE(ct.name, CONCAT('Card #', cc.code_barre)) as name,
-                    COALESCE(ct.label_name, CONCAT('Label #', cc.code_barre)) as label_name,
-                    3 as duration,
-                    COALESCE(cc.annotation, 0) as amount
-                FROM card_certification_order cco
-                INNER JOIN card_certification cc ON cco.card_certification_id = cc.id
-                LEFT JOIN card_translation ct ON cc.card_id = ct.translatable_id AND ct.locale = 'fr'
-                WHERE HEX(cco.order_id) = ?
-                ORDER BY cc.code_barre ASC
-                """;
-
-            Query query = entityManager.createNativeQuery(sql);
-            query.setParameter(1, orderId.toUpperCase());
-
-            @SuppressWarnings("unchecked")
-            List<Object[]> results = query.getResultList();
-
-            List<Map<String, Object>> cards = new ArrayList<>();
-
-            for (Object[] row : results) {
-                Map<String, Object> card = new HashMap<>();
-                card.put("id", row[0]);
-                card.put("code_barre", row[1]);
-                card.put("name", row[2]);
-                card.put("label_name", row[3]);
-                card.put("duration", row[4]);
-                card.put("amount", row[5] != null ? ((Number) row[5]).doubleValue() : 0.0);
-
-                cards.add(card);
-            }
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("cards", cards);
-            response.put("total", cards.size());
-
-            log.info("✅ Retrieved {} cards for order {}", cards.size(), orderId);
-            return ResponseEntity.ok(response);
-
-        } catch (Exception e) {
-            log.error("❌ Error fetching order cards", e);
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("success", false);
             errorResponse.put("error", e.getMessage());

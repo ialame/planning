@@ -1,467 +1,417 @@
-<!-- ============= CORRECTION EmployeeDetailPage.vue - FOCUS SUR LES COMMANDES ============= -->
-
 <template>
-  <div class="min-h-screen bg-gray-50 p-6">
-    <div class="max-w-7xl mx-auto">
+  <div class="employee-detail-page">
+    <!-- Header with Back Button -->
+    <div class="header-section">
+      <button @click="goBack" class="back-button">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+        Back to Employees
+      </button>
+    </div>
 
-      <!-- Breadcrumb et retour -->
-      <div class="flex items-center justify-between mb-6">
-        <div class="flex items-center space-x-4">
-          <button
-            @click="$emit('back')"
-            class="flex items-center text-blue-600 hover:text-blue-800 font-medium"
-          >
-            ← Back to Employees
-          </button>
-          <div class="text-gray-400">/</div>
-          <h1 class="text-2xl font-bold text-gray-900">
-            📋 {{ mode === 'planning' ? 'Planning View' : 'Employee Details' }}
-          </h1>
+    <!-- Employee Info Card -->
+    <div class="employee-info-card">
+      <div class="employee-header">
+        <div class="employee-avatar">
+          {{ getInitials(employeeData?.fullName || employeeData?.name) }}
         </div>
-        <div class="flex items-center space-x-3">
-          <input
-            v-model="selectedDate"
-            type="date"
-            class="border rounded-lg px-3 py-2"
-            @change="loadEmployeeOrders"
-          >
-          <button
-            @click="refreshData"
-            :disabled="loading"
-            class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {{ loading ? '⏳' : '🔄' }} Refresh
-          </button>
+        <div class="employee-details">
+          <h1 class="employee-name">{{ employeeData?.fullName || employeeData?.name || 'Loading...' }}</h1>
+          <p class="employee-meta">
+            <span class="meta-item">
+              <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+              </svg>
+              {{ employeeData?.email || 'N/A' }}
+            </span>
+            <span class="meta-item">
+              <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              {{ employeeData?.workHoursPerDay || 8 }}h/day
+            </span>
+          </p>
         </div>
-      </div>
-
-      <!-- En-tête employé compact -->
-      <div v-if="employeeData" class="bg-white rounded-lg shadow-sm border p-4 mb-6">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center">
-            <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-              <span class="text-white font-bold">
-                {{ getEmployeeInitials(employeeData) }}
-              </span>
-            </div>
-            <div class="ml-4">
-              <h2 class="text-lg font-bold text-gray-900">{{ employeeData.fullName || employeeData.name }}</h2>
-              <p class="text-sm text-gray-600">{{ employeeData.email }}</p>
-            </div>
+        <div class="employee-stats">
+          <div class="stat-card">
+            <div class="stat-value">{{ orders.length }}</div>
+            <div class="stat-label">Orders</div>
           </div>
-          <div class="text-right">
-            <div class="text-sm text-gray-600">Workload for {{ selectedDate }}</div>
-            <div class="text-lg font-bold" :class="workloadPercentage > 100 ? 'text-red-600' : workloadPercentage > 80 ? 'text-orange-600' : 'text-green-600'">
-              {{ workloadPercentage }}%
-            </div>
+          <div class="stat-card">
+            <div class="stat-value">{{ totalCards }}</div>
+            <div class="stat-label">Cards</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">{{ formatDuration(totalDuration) }}</div>
+            <div class="stat-label">Duration</div>
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- ✅ SECTION PRINCIPALE : COMMANDES ASSIGNÉES -->
-      <div class="bg-white rounded-lg shadow-sm border mb-6">
-        <div class="p-6 border-b border-gray-200">
-          <div class="flex items-center justify-between">
-            <div>
-              <h3 class="text-lg font-semibold text-gray-900">📦 Assigned Orders</h3>
-              <p class="text-sm text-gray-600 mt-1">Orders assigned to this employee for {{ selectedDate }}</p>
-            </div>
-            <div class="text-right">
-              <div class="text-2xl font-bold text-blue-600">{{ orders.length }}</div>
-              <div class="text-sm text-gray-600">Total Orders</div>
-            </div>
+    <!-- Date Filter -->
+    <div class="filter-section">
+      <label class="filter-label">
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+        </svg>
+        Filter by Date:
+      </label>
+      <input
+        type="date"
+        v-model="selectedDate"
+        @change="loadEmployeeOrders"
+        class="date-input"
+      />
+      <button @click="loadEmployeeOrders" class="refresh-btn">
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Refresh
+      </button>
+    </div>
+
+    <!-- Loading State -->
+    <div v-if="loading" class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading orders...</p>
+    </div>
+
+    <!-- Empty State -->
+    <div v-else-if="orders.length === 0" class="empty-state">
+      <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+      </svg>
+      <h3>No Orders Assigned</h3>
+      <p>No orders found for {{ selectedDate }}</p>
+    </div>
+
+    <!-- Orders Timeline -->
+    <div v-else class="orders-timeline">
+      <h2 class="timeline-title">
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+        </svg>
+        Work Schedule
+      </h2>
+
+      <!-- Group orders by day -->
+      <div v-for="(dayOrders, date) in ordersByDay" :key="date" class="day-group">
+        <div class="day-header">
+          <div class="day-date">
+            <span class="day-name">{{ formatDayName(date) }}</span>
+            <span class="day-full-date">{{ formatFullDate(date) }}</span>
+          </div>
+          <div class="day-summary">
+            <span class="summary-badge">{{ dayOrders.length }} orders</span>
+            <span class="summary-badge">{{ calculateDayCards(dayOrders) }} cards</span>
+            <span class="summary-badge">{{ formatDuration(calculateDayDuration(dayOrders)) }}</span>
           </div>
         </div>
 
-        <!-- Statistics Cards -->
-        <div class="p-6 border-b border-gray-200">
-          <div class="grid grid-cols-3 gap-4">
-            <div class="text-center">
-              <div class="text-xl font-bold text-purple-600">{{ totalCards }}</div>
-              <div class="text-sm text-gray-600">Total Cards</div>
+        <!-- Orders for this day -->
+        <div class="day-orders">
+          <div
+            v-for="order in dayOrders"
+            :key="order.planningId || order.id"
+            :class="['order-card', `priority-${getDelaiClass(order.delai)}`]"
+            @click="toggleOrderCards(order)"
+          >
+            <!-- Order Header -->
+            <div class="order-header">
+              <div class="order-time">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span class="time-range">
+                  {{ formatTime(order.startTime) }} - {{ formatTime(order.endTime) }}
+                </span>
+                <span class="duration-badge">{{ formatDuration(order.duration || order.durationMinutes || 0) }}</span>
+              </div>
+
+              <div class="order-badges">
+                <span :class="['priority-badge', `priority-${getDelaiClass(order.delai)}`]">
+                  {{ getDelaiLabel(order.delai) }}
+                </span>
+                <span :class="['status-badge', `status-${order.status}`]">
+                  {{ getStatusLabel(order.status) }}
+                </span>
+              </div>
             </div>
-            <div class="text-center">
-              <div class="text-xl font-bold text-green-600">{{ formatDuration(totalDuration) }}</div>
-              <div class="text-sm text-gray-600">Total Duration</div>
-            </div>
-            <div class="text-center">
-              <div class="text-xl font-bold text-gray-600">{{ employeeData?.workHoursPerDay || 8 }}h</div>
-              <div class="text-sm text-gray-600">Daily Capacity</div>
-            </div>
-          </div>
-        </div>
 
-        <!-- Orders List -->
-        <div class="p-6">
-          <!-- Loading State -->
-          <div v-if="loading" class="text-center py-8">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p class="text-gray-600">Loading assigned orders...</p>
-          </div>
-
-          <!-- Empty State -->
-          <div v-else-if="orders.length === 0" class="text-center py-8">
-            <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
-            </svg>
-            <h3 class="text-lg font-medium text-gray-900 mb-2">No Orders Assigned</h3>
-            <p class="text-gray-600 mb-4">No orders have been assigned to this employee for {{ selectedDate }}</p>
-            <button
-              @click="generatePlanningForEmployee"
-              class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            >
-              📋 Generate Planning for This Employee
-            </button>
-          </div>
-
-          <!-- Orders Grid -->
-          <!-- Orders Table -->
-          <!-- Replace the current table in EmployeeDetailPage.vue -->
-          <div v-else class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200">
-              <thead class="bg-gray-50">
-              <tr>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Order #
-                </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Delai
-                </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Cards
-                </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Start Time
-                </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  End Time
-                </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Duration
-                </th>
-                <th scope="col" class="relative px-6 py-3">
-                  <span class="sr-only">Actions</span>
-                </th>
-              </tr>
-              </thead>
-              <tbody class="bg-white divide-y divide-gray-200">
-              <template v-for="order in orders" :key="order.id || order.orderId">
-                <!-- Main Order Row -->
-                <tr
-                  class="hover:bg-gray-50 transition-colors duration-150"
-                  :class="{ 'bg-blue-50': order.showCards }"
-                >
-                  <!-- Order Number -->
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="flex items-center">
-                      <div class="text-sm font-medium text-gray-900">
-                        {{ order.orderNumber || order.num_commande || 'N/A' }}
-                      </div>
-                    </div>
-                  </td>
-
-                  <!-- Status -->
-                  <td class="px-6 py-4 whitespace-nowrap">
-          <span :class="[
-            'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-            getOrderStatusColor(order.orderStatus)
-          ]">
-            <span class="w-1.5 h-1.5 mr-1.5 rounded-full" :class="getOrderStatusDotColor(order.orderStatus)"></span>
-            {{ getOrderStatusText(order.orderStatus) }}
-          </span>
-                  </td>
-
-                  <!-- Delai (Priority) -->
-                  <td class="px-6 py-4 whitespace-nowrap">
-          <span :class="[
-            'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-            getDelaiColor(order.delai)
-          ]">
-            {{ getDelaiLabel(order.delai) }}
-          </span>
-                  </td>
-
-                  <!-- Card Count -->
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="flex items-center">
-                      <div class="text-sm font-medium text-gray-900">
-                        {{ order.cardCount || 0 }}
-                      </div>
-                      <div class="text-xs text-gray-500 ml-1">cards</div>
-                      <!-- Expand/Collapse indicator -->
-                      <div
-                        v-if="(order.cardCount || 0) > 0"
-                        class="ml-2 cursor-pointer text-blue-600 hover:text-blue-800"
-                        @click="toggleOrderCards(order)"
-                      >
-                        <svg class="w-4 h-4" :class="{ 'transform rotate-180': order.showCards }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                        </svg>
-                      </div>
-                    </div>
-                  </td>
-
-                  <!-- Start Time -->
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm text-gray-900">
-                      {{ formatTime(order.startTime) }}
-                    </div>
-                    <div class="text-xs text-gray-500">
-                      {{ order.planningDate || selectedDate }}
-                    </div>
-                  </td>
-
-                  <!-- End Time -->
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm text-gray-900">
-                      {{ formatTime(order.endTime) }}
-                    </div>
-                    <div class="text-xs text-gray-500">
-                      Est. {{ formatDuration(order.durationMinutes || order.estimatedDuration || 0) }}
-                    </div>
-                  </td>
-
-                  <!-- Duration -->
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm font-medium text-gray-900">
-                      {{ formatDuration(order.durationMinutes || order.estimatedDuration || (order.cardCount * 3)) }}
-                    </div>
-                    <div class="text-xs text-gray-500">
-                      {{ order.cardCount || 0 }} × 3min
-                    </div>
-                  </td>
-
-
-                  <!-- Actions -->
-                  <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                      @click="viewOrderDetails(order)"
-                      class="text-blue-600 hover:text-blue-900 mr-3"
-                    >
-                      View
-                    </button>
-                    <button
-                      v-if="order.status !== 'COMPLETED'"
-                      @click="startOrder(order)"
-                      class="text-green-600 hover:text-green-900"
-                    >
-                      Start
-                      </button>
-                  </td>
-                </tr>
-
-                <!-- ✅ EXPANDABLE CARDS ROW -->
-
-                <!-- Expanded Cards Section -->
-                <tr v-if="order.showCards" class="bg-gray-50">
-                  <td colspan="8" class="px-6 py-4">
-                    <!-- Loading cards -->
-                    <div v-if="order.loadingCards" class="text-center py-4">
-                      <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
-                      <p class="text-sm text-gray-600 mt-2">Loading cards...</p>
-                    </div>
-
-                    <!-- Cards list -->
-                    <div v-else-if="order.cards && order.cards.length > 0" class="space-y-2">
-                      <h4 class="font-semibold text-gray-900 mb-3">📋 Cards in this order ({{ order.cards.length }})</h4>
-                      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        <div
-                          v-for="(card, idx) in order.cards"
-                          :key="card.id || idx"
-                          class="bg-white p-3 rounded border border-gray-200 hover:shadow-sm transition-shadow"
-                        >
-                          <div class="flex items-start justify-between">
-                            <div class="flex-1">
-                              <div class="font-medium text-gray-900">
-                                {{ card.name || card.label_name || `Card #${idx + 1}` }}
-                              </div>
-                              <div class="text-xs text-gray-500 mt-1">
-                                Code: {{ card.code_barre || 'N/A' }}
-                              </div>
-                            </div>
-                            <div class="ml-2 text-right">
-                              <div class="text-xs font-medium text-blue-600">
-                                ~{{ card.duration || 3 }}min
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <!-- No cards -->
-                    <div v-else class="text-center py-4 text-gray-500">
-                      No card details available
-                    </div>
-                  </td>
-                </tr>
-              </template>
-              </tbody>
-            </table>
-          </div>
-            <!-- Table Footer with Summary -->
-            <div class="bg-gray-50 px-6 py-3 border-t border-gray-200">
-              <div class="flex justify-between items-center">
-                <div class="flex items-center space-x-4 text-sm text-gray-600">
-                  <span>Total: {{ orders.length }} orders</span>
-                  <span>•</span>
-                  <span>{{ totalCards }} cards</span>
-                  <span>•</span>
-                  <span>{{ formatDuration(totalDuration) }} estimated</span>
+            <!-- Order Content -->
+            <div class="order-content">
+              <div class="order-main">
+                <h3 class="order-number">
+                  📦 Order {{ order.orderNumber || order.clientOrderNumber }}
+                </h3>
+                <div class="order-meta">
+                  <span class="meta-item">
+                    <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+                    </svg>
+                    {{ order.cardCount || 0 }} cards
+                  </span>
+                  <span v-if="order.cardsWithName" class="meta-item">
+                    <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    {{ order.cardsWithName }} named
+                  </span>
+                  <span v-if="order.orderDate" class="meta-item">
+                    <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                    Created {{ formatDate(order.orderDate) }}
+                  </span>
                 </div>
-                <div class="text-sm text-gray-600">
-                  Capacity: {{ Math.round((totalDuration / ((employeeData?.workHoursPerDay || 8) * 60)) * 100) }}%
+              </div>
+
+              <!-- Expand Cards Button -->
+              <button
+                v-if="order.cardCount > 0"
+                class="expand-btn"
+                @click.stop="toggleOrderCards(order)"
+              >
+                <svg v-if="!order.showCards" class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+                <svg v-else class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+                </svg>
+                {{ order.showCards ? 'Hide' : 'Show' }} Cards
+              </button>
+            </div>
+
+            <!-- Expanded Cards List -->
+            <div v-if="order.showCards" class="cards-list">
+              <div v-if="order.loadingCards" class="cards-loading">
+                <div class="spinner-sm"></div>
+                Loading cards...
+              </div>
+              <div v-else-if="order.cards && order.cards.length > 0" class="cards-grid">
+                <div v-for="card in order.cards" :key="card.id" class="card-item">
+                  <div class="card-icon">🃏</div>
+                  <div class="card-info">
+                    <div class="card-name">{{ card.name || 'Unnamed Card' }}</div>
+                    <div class="card-label">{{ card.label_name || card.code_barre }}</div>
+                  </div>
+                  <div class="card-duration">{{ card.duration || 3 }}min</div>
                 </div>
+              </div>
+              <div v-else class="no-cards">
+                No card details available
               </div>
             </div>
           </div>
         </div>
       </div>
-
-      <!-- ✅ SECTION SECONDAIRE : GROUPES (réduite) -->
-      <div v-if="mode !== 'planning' && employeeData" class="bg-white rounded-lg shadow-sm border p-4">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">👥 Employee Groups</h3>
-        <EmployeeGroupsCard
-          :employee="employeeData"
-          @updated="refreshData"
-        />
-      </div>
-
     </div>
-
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { API_BASE_URL } from '@/config/api.ts'
-import EmployeeGroupsCard from "./groups/EmployeeGroupsCard.vue"
+import { ref, computed, onMounted, watch, inject } from 'vue'
+import { useRouter } from 'vue-router'
 
-// ========== PROPS ==========
 const props = defineProps<{
   employeeId: string
-  selectedDate: string
-  mode?: string
 }>()
 
-import { inject } from 'vue'
+const router = useRouter()
+const showNotification = inject('showNotification', null)
 
-// ========== INJECT PARENT SERVICES ==========
-const showNotification = inject('showNotification')
-// ========== EMITS DECLARATION ==========
-const emit = defineEmits(['refresh', 'back'])
+// Configuration
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
 
-// ========== STATE ==========
-const loading = ref(false)
-const loadingEmployee = ref(false)
+// State
 const employeeData = ref<any>(null)
 const orders = ref<any[]>([])
-//const selectedDate = ref(props.selectedDate)
-const selectedDate = ref('2025-06-01')
-const debugEmployeePlanning = async (employeeId: string) => {
-  console.log('🔍 === DEBUGGING EMPLOYEE PLANNING ===')
-  console.log('Employee ID:', employeeId)
-  console.log('Selected Date:', selectedDate.value)
+const loading = ref(false)
+const loadingEmployee = ref(false)
+const selectedDate = ref(new Date().toISOString().split('T')[0])
 
-  try {
-    // Test with current date
-    console.log('Testing with current date...')
-    const currentResponse = await fetch(`${API_BASE_URL}/api/planning/employee/${employeeId}?date=${selectedDate.value}`)
-    console.log('Current date response:', currentResponse.status)
-    if (currentResponse.ok) {
-      const currentData = await currentResponse.json()
-      console.log('Current date data:', currentData)
-    }
-
-    // Test without date filter
-    console.log('Testing without date filter...')
-    const noDateResponse = await fetch(`${API_BASE_URL}/api/planning/employee/${employeeId}`)
-    console.log('No date response:', currentResponse.status)
-    if (noDateResponse.ok) {
-      const noDateData = await noDateResponse.json()
-      console.log('No date data:', noDateData)
-    }
-
-    // Test with planning generation date
-    console.log('Testing with 2025-06-01...')
-    const planningDateResponse = await fetch(`${API_BASE_URL}/api/planning/employee/${employeeId}?date=2025-06-01`)
-    console.log('Planning date response:', planningDateResponse.status)
-    if (planningDateResponse.ok) {
-      const planningDateData = await planningDateResponse.json()
-      console.log('Planning date data:', planningDateData)
-    }
-
-  } catch (error) {
-    console.error('Debug error:', error)
-  }
-
-  console.log('🏁 === DEBUG COMPLETE ===')
-}
-// Make sure the back button emits the correct event
-const goBackToEmployees = () => {
-  console.log('🔙 Going back to employees list')
-  emit('back')
-}
-
-const workloadPercentage = computed(() => {
-  const maxMinutes = (employeeData.value?.workHoursPerDay || 8) * 60
-  return Math.round((totalDuration.value / maxMinutes) * 100)
+// Computed
+const totalCards = computed(() => {
+  return orders.value.reduce((sum, order) => sum + (order.cardCount || 0), 0)
 })
 
-// ========== METHODS ==========
-const getEmployeeInitials = (employee: any) => {
-  if (employee.firstName && employee.lastName) {
-    return `${employee.firstName.charAt(0)}${employee.lastName.charAt(0)}`
+const totalDuration = computed(() => {
+  return orders.value.reduce((sum, order) => {
+    const duration = order.duration || order.durationMinutes || (order.cardCount * 3)
+    return sum + duration
+  }, 0)
+})
+
+const ordersByDay = computed(() => {
+  const grouped: Record<string, any[]> = {}
+
+  orders.value.forEach(order => {
+    const date = order.planningDate || order.startTime?.split('T')[0] || selectedDate.value
+    if (!grouped[date]) {
+      grouped[date] = []
+    }
+    grouped[date].push(order)
+  })
+
+  // Sort by date
+  return Object.keys(grouped)
+    .sort()
+    .reduce((acc, date) => {
+      acc[date] = grouped[date].sort((a, b) => {
+        const timeA = a.startTime || ''
+        const timeB = b.startTime || ''
+        return timeA.localeCompare(timeB)
+      })
+      return acc
+    }, {} as Record<string, any[]>)
+})
+
+// Methods
+const goBack = () => {
+  router.push('/employees')
+}
+
+const getInitials = (name: string) => {
+  if (!name) return '??'
+  const parts = name.trim().split(' ')
+  if (parts.length >= 2) {
+    return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase()
   }
-  if (employee.fullName) {
-    const parts = employee.fullName.split(' ')
-    return parts.length > 1 ? `${parts[0].charAt(0)}${parts[1].charAt(0)}` : parts[0].charAt(0)
+  return parts[0].charAt(0).toUpperCase()
+}
+
+const formatTime = (datetime: any) => {
+  if (!datetime) return 'N/A'
+  try {
+    if (typeof datetime === 'string' && datetime.match(/^\d{2}:\d{2}$/)) {
+      return datetime
+    }
+    const date = new Date(datetime)
+    if (isNaN(date.getTime())) return 'N/A'
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+  } catch (e) {
+    return 'N/A'
   }
-  return '??'
 }
 
 const formatDuration = (minutes: number) => {
   const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  if (hours > 0) {
-    return `${hours}h ${remainingMinutes}m`
+  const mins = minutes % 60
+  if (hours > 0) return `${hours}h ${mins}m`
+  return `${mins}m`
+}
+
+const formatDate = (date: any) => {
+  if (!date) return 'N/A'
+  try {
+    return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  } catch (e) {
+    return 'N/A'
   }
-  return `${remainingMinutes}m`
 }
 
-const calculateEndTime = (order: any) => {
-  // Simple calculation - in a real app, this would be more sophisticated
-  const startTime = order.startTime || '09:00'
-  const duration = order.estimatedDuration || order.durationMinutes || (order.cardCount * 3)
-  // Return estimated end time (simplified)
-  return `${startTime} + ${formatDuration(duration)}`
+const formatDayName = (dateStr: string) => {
+  const date = new Date(dateStr)
+  return date.toLocaleDateString('en-US', { weekday: 'long' })
 }
 
+const formatFullDate = (dateStr: string) => {
+  const date = new Date(dateStr)
+  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+}
 
-const getStatusText = (status: any) => {
-  switch (status?.toString()) {
-    case '2':
-    case 'COMPLETED': return 'Completed'
-    case '1':
-    case 'IN_PROGRESS': return 'In Progress'
-    case '0':
-    case 'PENDING': return 'Pending'
-    default: return 'Unknown'
+const calculateDayCards = (dayOrders: any[]) => {
+  return dayOrders.reduce((sum, order) => sum + (order.cardCount || 0), 0)
+}
+
+const calculateDayDuration = (dayOrders: any[]) => {
+  return dayOrders.reduce((sum, order) => {
+    const duration = order.duration || order.durationMinutes || (order.cardCount * 3)
+    return sum + duration
+  }, 0)
+}
+
+const getDelaiClass = (delai: string) => {
+  const map: Record<string, string> = {
+    'X': 'excelsior',
+    'F+': 'fast-plus',
+    'F': 'fast',
+    'C': 'classic',
+    'E': 'economy'
+  }
+  return map[delai] || 'default'
+}
+
+const getDelaiLabel = (delai: string) => {
+  const map: Record<string, string> = {
+    'X': '⚡ Excelsior',
+    'F+': '🚀 Fast+',
+    'F': '⏩ Fast',
+    'C': '📦 Classic',
+    'E': '🐌 Economy'
+  }
+  return map[delai] || delai
+}
+
+const getStatusLabel = (status: any) => {
+  const statusMap: Record<string, string> = {
+    '2': 'To Grade',
+    '3': 'To Certify',
+    '4': 'To Prepare',
+    '0': 'Pending',
+    '1': 'In Progress'
+  }
+  return statusMap[status?.toString()] || 'Unknown'
+}
+
+const toggleOrderCards = async (order: any) => {
+  if (order.showCards) {
+    order.showCards = false
+    return
+  }
+
+  if (!order.cards || order.cards.length === 0) {
+    await loadOrderCards(order)
+  }
+
+  order.showCards = true
+}
+
+const loadOrderCards = async (order: any) => {
+  try {
+    order.loadingCards = true
+    const orderId = order.orderId || order.id
+
+    const response = await fetch(`${API_BASE_URL}/api/planning/order/${orderId}/cards`)
+
+    if (response.ok) {
+      const data = await response.json()
+      if (data.success && data.cards) {
+        order.cards = data.cards
+      } else {
+        order.cards = []
+      }
+    } else {
+      order.cards = []
+    }
+  } catch (error) {
+    console.error('Error loading cards:', error)
+    order.cards = []
+  } finally {
+    order.loadingCards = false
   }
 }
 
 const loadEmployeeData = async () => {
   loadingEmployee.value = true
   try {
-    console.log('🔍 Loading employee data for ID:', props.employeeId)
-
     const response = await fetch(`${API_BASE_URL}/api/employees`)
     if (response.ok) {
       const data = await response.json()
       const employees = data.employees || data || []
-      const employee = employees.find(emp => emp.id === props.employeeId)
+      const employee = employees.find((emp: any) => emp.id === props.employeeId)
 
       if (employee) {
         employeeData.value = {
@@ -469,11 +419,10 @@ const loadEmployeeData = async () => {
           fullName: employee.fullName || `${employee.firstName} ${employee.lastName}`,
           name: employee.name || employee.fullName || `${employee.firstName} ${employee.lastName}`
         }
-        console.log('✅ Employee data loaded:', employeeData.value)
       }
     }
   } catch (error) {
-    console.error('❌ Error loading employee data:', error)
+    console.error('Error loading employee:', error)
   } finally {
     loadingEmployee.value = false
   }
@@ -482,511 +431,565 @@ const loadEmployeeData = async () => {
 const loadEmployeeOrders = async () => {
   loading.value = true
   try {
-    console.log('📋 Loading orders for employee:', props.employeeId, 'date:', selectedDate.value)
-
     const response = await fetch(`${API_BASE_URL}/api/planning/employee/${props.employeeId}?date=${selectedDate.value}`)
 
     if (response.ok) {
       const data = await response.json()
-      console.log('✅ Employee orders loaded:', data)
-
       if (data.success) {
-        orders.value = data.orders || []
-        console.log(`📦 Found ${orders.value.length} orders for employee`)
+        orders.value = (data.orders || []).map((order: any) => ({
+          ...order,
+          showCards: false,
+          loadingCards: false,
+          cards: []
+        }))
       } else {
         orders.value = []
       }
-    } else if (response.status === 404) {
-      console.log('ℹ️ No orders found for employee')
+    } else {
       orders.value = []
     }
-
   } catch (error) {
-    console.error('❌ Error loading employee orders:', error)
+    console.error('Error loading orders:', error)
     orders.value = []
   } finally {
     loading.value = false
   }
 }
 
-const generatePlanningForEmployee = async () => {
-  try {
-    console.log('🚀 Generating planning for employee:', props.employeeId)
-    // Redirect to main planning page or trigger generation
-    alert('Planning generation for individual employees coming soon!')
-  } catch (error) {
-    console.error('Error generating planning:', error)
-  }
-}
-
-const refreshData = async () => {
-  await Promise.all([
-    loadEmployeeData(),
-    loadEmployeeOrders()
-  ])
-  emit('refresh')
-}
-
-// Add these methods to the <script setup> section of EmployeeDetailPage.vue
-// Around line 150-200, after the existing methods
-
-// ========== TABLE FORMATTING METHODS ==========
-
-/**
- * Get status badge color classes
- */
-const getStatusColor = (status: string) => {
-  const colors = {
-    'PENDING': 'bg-yellow-100 text-yellow-800',
-    'IN_PROGRESS': 'bg-blue-100 text-blue-800',
-    'PROCESSING': 'bg-blue-100 text-blue-800',
-    'COMPLETED': 'bg-green-100 text-green-800',
-    'ON_HOLD': 'bg-orange-100 text-orange-800',
-    'CANCELLED': 'bg-red-100 text-red-800',
-    'DELIVERED': 'bg-green-100 text-green-800'
-  }
-  return colors[status.toUpperCase()] || 'bg-gray-100 text-gray-800'
-}
-
-/**
- * Get status dot color for visual indicator
- */
-const getStatusDotColor = (status: string) => {
-  const colors = {
-    'PENDING': 'bg-yellow-400',
-    'IN_PROGRESS': 'bg-blue-400',
-    'PROCESSING': 'bg-blue-400',
-    'COMPLETED': 'bg-green-400',
-    'ON_HOLD': 'bg-orange-400',
-    'CANCELLED': 'bg-red-400',
-    'DELIVERED': 'bg-green-400'
-  }
-  return colors[status.toUpperCase()] || 'bg-gray-400'
-}
-
-/**
- * Get priority badge color classes
- */
-const getPriorityColor = (priority: string) => {
-  const colors = {
-    'HIGH': 'bg-red-100 text-red-800',
-    'URGENT': 'bg-red-100 text-red-800',
-    'MEDIUM': 'bg-yellow-100 text-yellow-800',
-    'LOW': 'bg-green-100 text-green-800'
-  }
-  return colors[priority.toUpperCase()] || 'bg-gray-100 text-gray-800'
-}
-
-/**
- * Get priority icon
- */
-const getPriorityIcon = (priority: string) => {
-  const icons = {
-    'HIGH': '🔥',
-    'URGENT': '⚡',
-    'MEDIUM': '➖',
-    'LOW': '📝'
-  }
-  return icons[priority.toUpperCase()] || '➖'
-}
-
-/**
- * Format price with currency
- */
-const formatPrice = (price: number | string) => {
-  const numPrice = typeof price === 'string' ? parseFloat(price) : price
-  if (isNaN(numPrice) || numPrice === 0) return '-'
-
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2
-  }).format(numPrice)
-}
-
-/**
- * Format date for display
- */
-const formatDate = (dateStr: string | Date) => {
-  if (!dateStr) return '-'
-
-  try {
-    const date = new Date(dateStr)
-    return new Intl.DateTimeFormat('fr-FR', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }).format(date)
-  } catch {
-    return '-'
-  }
-}
-
-/**
- * Format time ago (e.g., "2 days ago")
- */
-const formatTimeAgo = (dateStr: string | Date) => {
-  if (!dateStr) return ''
-
-  try {
-    const date = new Date(dateStr)
-    const now = new Date()
-    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
-
-    if (diffInSeconds < 60) return 'Just now'
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}min ago`
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`
-    if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`
-
-    return formatDate(date)
-  } catch {
-    return ''
-  }
-}
-
-/**
- * Start processing an order
- */
-const startOrder = async (order: any) => {
-  try {
-    console.log('🚀 Starting order processing:', order.orderNumber)
-
-    // Simulate API call to start order
-    const response = await fetch(`${API_BASE_URL}/api/orders/${order.id || order.orderId}/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    })
-
-    if (response.ok) {
-      // Update order status locally
-      order.status = 'IN_PROGRESS'
-
-      // ✅ Use injected notification system (no emit error)
-      if (showNotification) {
-        showNotification(`Started processing order ${order.orderNumber}`, 'success')
-      }
-
-      // Refresh data
-      await loadEmployeeOrders()
-      emit('refresh')
-
-    } else {
-      throw new Error(`HTTP ${response.status}`)
-    }
-
-  } catch (error) {
-    console.error('❌ Error starting order:', error)
-
-    // ✅ Use injected notification system
-    if (showNotification) {
-      showNotification(`Failed to start order ${order.orderNumber}`, 'error')
-    }
-  }
-}
-
-// ========== COMPUTED PROPERTIES FOR TABLE ==========
-
-/**
- * Calculate total cards across all orders
- */
-const totalCards = computed(() => {
-  return orders.value.reduce((sum, order) => {
-    return sum + (order.cardCount || order.cardsWithName || order.totalCards || 0)
-  }, 0)
-})
-
-/**
- * Calculate total duration across all orders
- */
-const totalDuration = computed(() => {
-  return orders.value.reduce((sum, order) => {
-    const duration = order.estimatedDuration ||
-      order.durationMinutes ||
-      (order.cardCount || 0) * 3 // 3 minutes per card default
-    return sum + duration
-  }, 0)
-})
-
-
-
-/**
- * Toggle order cards display with loading and API call
- */
-const toggleOrderCards = async (order: any) => {
-  // If already showing, just hide
-  if (order.showCards) {
-    order.showCards = false
-    return
-  }
-
-  // If cards not loaded yet, fetch them
-  if (!order.cards || order.cards.length === 0) {
-    await loadOrderCards(order)
-  }
-
-  // Show the cards
-  order.showCards = true
-}
-
-/**
- * Load cards for a specific order
- */
-const loadOrderCards = async (order: any) => {
-  try {
-    order.loadingCards = true
-
-    const orderId = order.orderId || order.id
-    console.log('🃏 Loading cards for order:', orderId)
-
-    const response = await fetch(`${API_BASE_URL}/api/planning/order/${orderId}/cards`)
-
-    if (response.ok) {
-      const data = await response.json()
-      console.log('✅ Order cards loaded:', data)
-
-      if (data.success && data.cards) {
-        order.cards = data.cards
-        console.log(`📦 Loaded ${data.cards.length} cards for order ${order.orderNumber}`)
-      } else {
-        order.cards = []
-        console.log('ℹ️ No cards found for order')
-      }
-    } else if (response.status === 404) {
-      order.cards = []
-      console.log('ℹ️ No cards found for order (404)')
-    } else {
-      throw new Error(`HTTP ${response.status}`)
-    }
-
-  } catch (error) {
-    console.error('❌ Error loading order cards:', error)
-    order.cards = []
-
-    // Show error notification if available
-    if (showNotification) {
-      showNotification(`Failed to load cards for order ${order.orderNumber}`, 'error')
-    }
-  } finally {
-    order.loadingCards = false
-  }
-}
-
-/**
- * Initialize orders with default card state
- */
-const initializeOrdersCardState = () => {
-  orders.value.forEach(order => {
-    if (!order.hasOwnProperty('showCards')) {
-      order.showCards = false
-    }
-    if (!order.hasOwnProperty('loadingCards')) {
-      order.loadingCards = false
-    }
-    if (!order.hasOwnProperty('cards')) {
-      order.cards = []
-    }
-  })
-}
-
-/**
- * Close all expanded cards
- */
-const closeAllCards = () => {
-  orders.value.forEach(order => {
-    order.showCards = false
-  })
-}
-
-/**
- * Enhanced viewOrderDetails - now toggles card display
- */
-const viewOrderDetails = (order: any) => {
-  console.log('👁️ View order details (toggling cards):', order.orderNumber)
-  toggleOrderCards(order)
-}
-
-// ========== WATCHERS ==========
-
-// Watch for orders changes to initialize card state
-watch(orders, (newOrders) => {
-  if (newOrders && newOrders.length > 0) {
-    initializeOrdersCardState()
-  }
-}, { deep: true, immediate: true })
-
-// ========== ENHANCED LOADING METHOD ==========
-
-const loadEmployeeOrdersEnhanced = async () => {
-  loading.value = true
-  try {
-    console.log('📋 Loading orders for employee:', props.employeeId, 'date:', selectedDate.value)
-
-    const response = await fetch(`${API_BASE_URL}/api/planning/employee/${props.employeeId}?date=${selectedDate.value}`)
-
-    if (response.ok) {
-      const data = await response.json()
-      console.log('✅ Employee orders loaded:', data)
-
-      if (data.success) {
-        orders.value = data.orders || []
-
-        // Initialize card state for all orders
-        initializeOrdersCardState()
-
-        console.log(`📦 Found ${orders.value.length} orders for employee`)
-      } else {
-        orders.value = []
-      }
-    } else if (response.status === 404) {
-      console.log('ℹ️ No orders found for employee')
-      orders.value = []
-    }
-
-  } catch (error) {
-    console.error('❌ Error loading employee orders:', error)
-    orders.value = []
-  } finally {
-    loading.value = false
-  }
-}
-
-// ========== KEYBOARD SHORTCUTS ==========
-
-/**
- * Handle keyboard shortcuts
- */
-const handleKeydown = (event: KeyboardEvent) => {
-  // ESC key - close all expanded cards
-  if (event.key === 'Escape') {
-    closeAllCards()
-  }
-}
-
-
-/**
- * Format time from datetime string (HH:MM format)
- */
-const formatTime = (datetime) => {
-  if (!datetime) return 'N/A'
-
-  try {
-    // If it's already in HH:MM format
-    if (typeof datetime === 'string' && datetime.match(/^\d{2}:\d{2}$/)) {
-      return datetime
-    }
-
-    // If it's a full datetime string
-    const date = new Date(datetime)
-    if (isNaN(date.getTime())) return 'N/A'
-
-    return date.toLocaleTimeString('fr-FR', {
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  } catch (e) {
-    return 'N/A'
-  }
-}
-
-/**
- * Get color classes for order status (from order table, not planning)
- */
-const getOrderStatusColor = (status) => {
-  // Status from order table: 1=A_RECEPTIONNER, 2=A_NOTER, 3=A_CERTIFIER, etc.
-  switch (parseInt(status)) {
-    case 1: return 'bg-blue-100 text-blue-800'      // A_RECEPTIONNER
-    case 2: return 'bg-yellow-100 text-yellow-800'  // A_NOTER
-    case 3: return 'bg-purple-100 text-purple-800'  // A_CERTIFIER
-    case 4: return 'bg-orange-100 text-orange-800'  // A_PREPARER
-    case 5: return 'bg-green-100 text-green-800'    // ENVOYEE
-    case 8: return 'bg-gray-100 text-gray-800'      // RECU
-    default: return 'bg-gray-100 text-gray-800'
-  }
-}
-
-/**
- * Get dot color for order status
- */
-const getOrderStatusDotColor = (status) => {
-  switch (parseInt(status)) {
-    case 1: return 'bg-blue-600'
-    case 2: return 'bg-yellow-600'
-    case 3: return 'bg-purple-600'
-    case 4: return 'bg-orange-600'
-    case 5: return 'bg-green-600'
-    case 8: return 'bg-gray-600'
-    default: return 'bg-gray-600'
-  }
-}
-
-/**
- * Get text for order status
- */
-const getOrderStatusText = (status) => {
-  switch (parseInt(status)) {
-    case 1: return 'To Receive'
-    case 2: return 'To Note'
-    case 3: return 'To Certify'
-    case 4: return 'To Prepare'
-    case 5: return 'Sent'
-    case 8: return 'Received'
-    default: return 'Unknown'
-  }
-}
-
-/**
- * Get color classes for delai
- */
-const getDelaiColor = (delai:string) => {
-  if (!delai) return 'bg-gray-100 text-gray-800'
-
-  switch (delai.toUpperCase()) {
-    case 'X': return 'bg-red-100 text-red-800'
-    case 'F+': return 'bg-orange-100 text-orange-800'
-    case 'F': return 'bg-yellow-100 text-yellow-800'
-    case 'C':
-    case 'E': return 'bg-green-100 text-green-800'
-    default: return 'bg-gray-100 text-gray-800'
-  }
-}
-
-/**
- * Get label for delai
- */
-const getDelaiLabel = (delai:string) => {
-  if (!delai) return 'Unknown'
-
-  switch (delai.toUpperCase()) {
-    case 'X': return '🔴 Excelsior'
-    case 'F+': return '🟠 Fast+'
-    case 'F': return '🟡 Fast'
-    case 'C': return '🟢 Classic'
-    case 'E': return '🟢 Economy'
-    default: return delai
-  }
-}
-
-
-
-// ========== LIFECYCLE HOOKS ==========
-
-import { onUnmounted } from 'vue'
-
+// Lifecycle
 onMounted(() => {
-  // Add keyboard event listener
-  document.addEventListener('keydown', handleKeydown)
+  loadEmployeeData()
+  loadEmployeeOrders()
 })
-
-onUnmounted(() => {
-  // Remove keyboard event listener
-  document.removeEventListener('keydown', handleKeydown)
-})
-
-// ========== WATCHERS ==========
-watch(() => props.employeeId, refreshData, { immediate: false })
-watch(selectedDate, loadEmployeeOrders)
-
-// ========== LIFECYCLE ==========
-onMounted(refreshData)
 </script>
+
+<style scoped>
+.employee-detail-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.header-section {
+  margin-bottom: 24px;
+}
+
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.back-button:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+}
+
+.back-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.employee-info-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px;
+  padding: 32px;
+  margin-bottom: 24px;
+  color: white;
+  box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+}
+
+.employee-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.employee-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: bold;
+  color: white;
+  backdrop-filter: blur(10px);
+  border: 3px solid rgba(255, 255, 255, 0.3);
+}
+
+.employee-details {
+  flex: 1;
+  min-width: 250px;
+}
+
+.employee-name {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+}
+
+.employee-meta {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  opacity: 0.9;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.employee-stats {
+  display: flex;
+  gap: 16px;
+}
+
+.stat-card {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  padding: 16px 24px;
+  text-align: center;
+  min-width: 100px;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.stat-label {
+  font-size: 12px;
+  opacity: 0.8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.filter-section {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.filter-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.date-input {
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.refresh-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.refresh-btn:hover {
+  background: #5a67d8;
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+}
+
+.loading-state, .empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  background: white;
+  border-radius: 12px;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid #f3f4f6;
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.empty-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 16px;
+  color: #9ca3af;
+}
+
+.orders-timeline {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.timeline-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 24px 0;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #f3f4f6;
+}
+
+.day-group {
+  margin-bottom: 32px;
+}
+
+.day-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.day-date {
+  display: flex;
+  flex-direction: column;
+}
+
+.day-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.day-full-date {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.day-summary {
+  display: flex;
+  gap: 12px;
+}
+
+.summary-badge {
+  padding: 6px 12px;
+  background: white;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.day-orders {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-left: 20px;
+}
+
+.order-card {
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-left-width: 6px;
+  border-radius: 12px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.order-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateX(4px);
+}
+
+.order-card.priority-excelsior {
+  border-left-color: #ef4444;
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.05) 0%, white 100%);
+}
+
+.order-card.priority-fast-plus {
+  border-left-color: #f97316;
+  background: linear-gradient(90deg, rgba(249, 115, 22, 0.05) 0%, white 100%);
+}
+
+.order-card.priority-fast {
+  border-left-color: #eab308;
+  background: linear-gradient(90deg, rgba(234, 179, 8, 0.05) 0%, white 100%);
+}
+
+.order-card.priority-classic {
+  border-left-color: #3b82f6;
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.05) 0%, white 100%);
+}
+
+.order-card.priority-economy {
+  border-left-color: #10b981;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.05) 0%, white 100%);
+}
+
+.order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.order-time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.time-range {
+  color: #374151;
+}
+
+.duration-badge {
+  padding: 4px 10px;
+  background: #f3f4f6;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.order-badges {
+  display: flex;
+  gap: 8px;
+}
+
+.priority-badge, .status-badge {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.priority-badge.priority-excelsior {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.priority-badge.priority-fast-plus {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.priority-badge.priority-fast {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.priority-badge.priority-classic {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.priority-badge.priority-economy {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.status-badge {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.order-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.order-main {
+  flex: 1;
+}
+
+.order-number {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 8px 0;
+}
+
+.order-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.expand-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.expand-btn:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.cards-list {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.cards-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  padding: 20px;
+  color: #6b7280;
+}
+
+.spinner-sm {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #f3f4f6;
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.card-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.card-item:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.card-icon {
+  font-size: 24px;
+}
+
+.card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-name {
+  font-weight: 600;
+  color: #111827;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-label {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.card-duration {
+  padding: 4px 8px;
+  background: white;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #667eea;
+}
+
+.no-cards {
+  text-align: center;
+  padding: 20px;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+@media (max-width: 768px) {
+  .employee-header {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .employee-stats {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .day-header {
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+  }
+
+  .order-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+</style>
