@@ -169,4 +169,6 @@ docker-compose*.yml
 *.log
 pokemon-planning-*.yaml
 
+latex/
+
 
