@@ -177,3 +177,6 @@ latex/
 .env
 
 dev/
+
+sync_dev_*.sql
+patch_symfony_client.sh

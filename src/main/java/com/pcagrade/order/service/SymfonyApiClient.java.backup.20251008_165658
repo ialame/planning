@@ -29,23 +29,8 @@ public class SymfonyApiClient {
     @Value("${symfony.api.base-url:http://localhost:8000}")
     private String symfonyApiBaseUrl;
 
-    @Value("${symfony.api.locale:fr}")
-    private String symfonyApiLocale;
-
     @Value("${symfony.api.timeout:30}")
     private int timeoutSeconds;
-
-
-    /**
-     * Build API URL with locale
-     */
-    private String buildApiUrl(String endpoint) {
-        if (endpoint.startsWith("/")) {
-            endpoint = endpoint.substring(1);
-        }
-        return String.format("%s/%s/%s", symfonyApiBaseUrl, symfonyApiLocale, endpoint);
-    }
-
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -111,7 +96,7 @@ public class SymfonyApiClient {
      */
     public Map<String, Object> getStats() {
         try {
-            String url = buildApiUrl("api/export/stats");
+            String url = symfonyApiBaseUrl + "/api/export/stats";
             log.info("📊 Fetching stats from: {}", url);
 
             HttpRequest request = HttpRequest.newBuilder()
@@ -145,7 +130,7 @@ public class SymfonyApiClient {
      */
     public boolean isHealthy() {
         try {
-            String url = buildApiUrl("api/export/health");
+            String url = symfonyApiBaseUrl + "/api/export/health";
             log.debug("🏥 Checking Symfony API health: {}", url);
 
             HttpRequest request = HttpRequest.newBuilder()
@@ -181,13 +166,17 @@ public class SymfonyApiClient {
         boolean hasMore = true;
 
         try {
-            log.info("🔄 Starting paginated fetch from: {}", endpoint);
-
             while (hasMore) {
-                // ✅ Utiliser buildApiUrl() pour ajouter le locale
-                String url = buildApiUrl(String.format("%s?limit=%d&offset=%d", endpoint, limit, offset));
+                String url = symfonyApiBaseUrl + endpoint;
 
-                log.debug("📥 Fetching page: {} (offset: {})", url, offset);
+                // Add pagination params
+                if (endpoint.contains("?")) {
+                    url += "&limit=" + limit + "&offset=" + offset;
+                } else {
+                    url += "?limit=" + limit + "&offset=" + offset;
+                }
+
+                log.debug("🔄 Fetching: {} (offset: {})", endpoint, offset);
 
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(url))
@@ -195,50 +184,39 @@ public class SymfonyApiClient {
                         .GET()
                         .build();
 
-                HttpResponse<String> response = httpClient.send(request,
-                        HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-                if (response.statusCode() != 200) {
-                    log.error("❌ HTTP {} from {}", response.statusCode(), url);
-                    break;
-                }
+                if (response.statusCode() == 200) {
+                    JsonNode root = objectMapper.readTree(response.body());
 
-                JsonNode root = objectMapper.readTree(response.body());
+                    if (root.get("success").asBoolean()) {
+                        JsonNode dataNode = root.get("data");
+                        List<Map<String, Object>> pageData = objectMapper.convertValue(dataNode, List.class);
+                        allData.addAll(pageData);
 
-                if (!root.path("success").asBoolean(false)) {
-                    log.error("❌ API returned success=false");
-                    break;
-                }
+                        // Check if there's more data
+                        JsonNode pagination = root.get("pagination");
+                        hasMore = pagination.get("hasMore").asBoolean();
+                        offset += limit;
 
-                JsonNode dataNode = root.get("data");
-                if (dataNode != null && dataNode.isArray()) {
-                    List<Map<String, Object>> pageData = objectMapper.convertValue(
-                            dataNode,
-                            objectMapper.getTypeFactory().constructCollectionType(List.class, Map.class)
-                    );
-                    allData.addAll(pageData);
-                    log.debug("✅ Fetched {} items (total so far: {})", pageData.size(), allData.size());
-                }
-
-                JsonNode pagination = root.get("pagination");
-                hasMore = pagination != null && pagination.path("hasMore").asBoolean(false);
-                offset += limit;
-
-                // Safety limit
-                if (allData.size() > 100000) {
-                    log.warn("⚠️ Reached safety limit of 100,000 records");
-                    break;
+                        log.debug("✅ Fetched {} records, hasMore: {}", pageData.size(), hasMore);
+                    } else {
+                        throw new RuntimeException("API returned success=false");
+                    }
+                } else {
+                    throw new RuntimeException("HTTP " + response.statusCode() + ": " + response.body());
                 }
             }
 
-            log.info("✅ Completed fetch from {}: {} total items", endpoint, allData.size());
+            log.info("✅ Successfully fetched {} total records from {}", allData.size(), endpoint);
             return allData;
 
         } catch (Exception e) {
-            log.error("❌ Error during paginated fetch from {}", endpoint, e);
-            return allData;
+            log.error("❌ Error fetching data from Symfony API: {}", endpoint, e);
+            throw new RuntimeException("Failed to fetch data from " + endpoint + ": " + e.getMessage(), e);
         }
     }
+
     /**
      * Fetch all invoices from Symfony API
      */
@@ -303,7 +281,7 @@ public class SymfonyApiClient {
      */
     public int countInvoices() {
         try {
-            String url = buildApiUrl("api/export/invoices?limit=1&offset=0");
+            String url = String.format("%s/api/export/invoices?limit=1&offset=0", symfonyApiBaseUrl);
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
