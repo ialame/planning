@@ -161,6 +161,8 @@ test_*.js
 ### VS Code ###
 .vscode/
 2025-07-04_00-00-01.sql
+dev_backup_20251006.sql
+migrate_to_dev_planning.sql
 
 toto.*
 test_frontend_api.js
@@ -173,3 +175,5 @@ latex/
 
 
 .env
+
+dev/

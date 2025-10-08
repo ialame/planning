@@ -115,6 +115,11 @@
           <p>Voir et modifier les plannings</p>
           <div class="card-count">{{ stats.planningCount || 0 }} planifications</div>
         </router-link>
+        <router-link to="/sync" class="nav-card">
+          <div class="card-icon">🔄</div>
+          <h3>Data Sync</h3>
+        </router-link>
+
       </div>
     </div>
 

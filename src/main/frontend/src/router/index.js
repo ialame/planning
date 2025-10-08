@@ -3,7 +3,8 @@ import Dashboard from '../views/Dashboard.vue'
 import Orders from '../views/Orders.vue'
 import Employees from '../views/Employees.vue'
 import Planning from '../views/Planning.vue'
-import Groups from '../views/Groups.vue'  // 👈 NOUVEAU
+import Groups from '../views/Groups.vue'
+import ApiSync from '../views/DataSync.vue' // 👈 NOUVEAU
 
 const router = createRouter({
   history: createWebHistory(),
@@ -32,6 +33,11 @@ const router = createRouter({
       path: '/groups',          // 👈 NOUVELLE ROUTE
       name: 'groups',
       component: Groups
+    },
+    {
+      path: '/sync',
+      name: 'DataSync',
+      component: ApiSync
     }
   ]
 })

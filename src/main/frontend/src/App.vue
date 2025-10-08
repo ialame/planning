@@ -42,6 +42,10 @@
 
       <!-- NOUVEAU -->
       <GroupsView v-if="activeTab === 'groups'" />
+      <!-- NOUVEAU -->
+      <SyncView v-if="activeTab === 'sync'" />
+
+
     </main>
 
     <!-- Notifications -->
@@ -64,6 +68,7 @@ import OrdersView from './views/Orders.vue'
 import EmployeesView from './views/Employees.vue'
 import PlanningView from './views/Planning.vue'
 import GroupsView from "./views/Groups.vue";
+import SyncView from "./views/DataSync.vue";
 
 // État global
 const activeTab = ref('dashboard')
@@ -79,6 +84,7 @@ const tabs = [
   { id: 'employees', label: '👥 Employees & Planning' },
   { id: 'planning', label: '📅 Global Planning' },
   { id: 'groups', label: '👥 Groups' },
+  { id: 'sync', label: 'ApiSync' },
 ]
   // Fonction pour changer d'onglet
 const changeTab = (tabId: string) => {
