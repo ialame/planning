@@ -225,10 +225,10 @@ public class SymfonyApiClient {
                 offset += limit;
 
                 // Safety limit
-                if (allData.size() > 100000) {
-                    log.warn("⚠️ Reached safety limit of 100,000 records");
-                    break;
-                }
+//                if (allData.size() > 100000) {
+//                    log.warn("⚠️ Reached safety limit of 100,000 records");
+//                    break;
+//                }
             }
 
             log.info("✅ Completed fetch from {}: {} total items", endpoint, allData.size());
@@ -327,3 +327,8 @@ public class SymfonyApiClient {
         }
     }
 }
+/*
+On passe maintenant au frontend (views/DataSync.vue):
+ je n'ai plus les statistiques de synchronisation. Voici une copie d'écran:
+
+ */
