@@ -30,8 +30,8 @@
           <tbody>
           <tr v-for="table in syncStatus.tableComparison" :key="table.table">
             <td><strong>{{ table.table }}</strong></td>
-            <td>{{ table.devCount?.toLocaleString() || 0 }}</td>
-            <td>{{ table.devPlanningCount?.toLocaleString() || 0 }}</td>
+            <td>{{ table.symfony?.toLocaleString() || 0 }}</td>
+            <td>{{ table.local?.toLocaleString() || 0 }}</td>
             <td :class="{ 'text-danger': table.difference !== 0 }">
               {{ table.difference }}
             </td>
@@ -376,6 +376,15 @@ checkSyncStatus()
   font-weight: 600;
 }
 
+.text-muted {
+  color: #6c757d;
+  font-size: 0.9em;
+}
+
+.mt-2 {
+  margin-top: 0.5rem;
+}
+
 .badge {
   display: inline-block;
   padding: 4px 8px;
@@ -424,6 +433,8 @@ checkSyncStatus()
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s;
+  width: 100%;
+  max-width: 250px;
 }
 
 .btn:disabled {
@@ -455,7 +466,7 @@ checkSyncStatus()
 }
 
 .btn-info:hover:not(:disabled) {
-  background: #117a8b;
+  background: #138496;
 }
 
 .btn-success {
@@ -464,7 +475,7 @@ checkSyncStatus()
 }
 
 .btn-success:hover:not(:disabled) {
-  background: #1e7e34;
+  background: #218838;
 }
 
 .history-card {
@@ -478,59 +489,39 @@ checkSyncStatus()
 
 .history-entry {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   padding: 12px;
-  margin-bottom: 8px;
-  border-radius: 6px;
-  border-left: 4px solid;
+  border-bottom: 1px solid #eee;
+  gap: 12px;
 }
 
 .history-entry.success {
-  background: #d4edda;
-  border-left-color: #28a745;
+  background: #f8fff9;
 }
 
 .history-entry.error {
-  background: #f8d7da;
-  border-left-color: #dc3545;
+  background: #fff8f8;
 }
 
 .history-entry .time {
   font-size: 0.85em;
   color: #666;
-  min-width: 150px;
+  min-width: 120px;
 }
 
 .history-entry .message {
   flex: 1;
-  margin: 0 15px;
 }
 
 .notification {
   position: fixed;
   top: 20px;
   right: 20px;
-  padding: 15px 20px;
+  padding: 15px 25px;
   border-radius: 6px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   z-index: 1000;
   animation: slideIn 0.3s ease-out;
-}
-
-.notification.success {
-  background: #28a745;
-  color: white;
-}
-
-.notification.error {
-  background: #dc3545;
-  color: white;
-}
-
-.notification.info {
-  background: #17a2b8;
-  color: white;
 }
 
 @keyframes slideIn {
@@ -544,12 +535,21 @@ checkSyncStatus()
   }
 }
 
-.text-muted {
-  color: #6c757d;
-  font-size: 0.9em;
+.notification.success {
+  background: #d4edda;
+  color: #155724;
+  border-left: 4px solid #28a745;
 }
 
-.mt-2 {
-  margin-top: 8px;
+.notification.error {
+  background: #f8d7da;
+  color: #721c24;
+  border-left: 4px solid #dc3545;
+}
+
+.notification.info {
+  background: #d1ecf1;
+  color: #0c5460;
+  border-left: 4px solid #17a2b8;
 }
 </style>
