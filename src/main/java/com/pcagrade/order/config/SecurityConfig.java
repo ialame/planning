@@ -32,8 +32,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final ApiKeyAuthenticationFilter jwtAuthFilter;
-    private final JwtAuthenticationFilter apiKeyAuthFilter;
+    private final JwtAuthenticationFilter jwtAuthFilter;
+    private final ApiKeyAuthenticationFilter apiKeyAuthFilter;
+
     private final UserDetailsService userDetailsService;
 
     @Bean
