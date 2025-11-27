@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Silent Renew</title>
+</head>
+<body>
+  <script>
+    // This page is loaded in a hidden iframe for silent token renewal
+    // It receives the auth response from Authentik and passes it to the parent
+    
+    // Import the OIDC client library from parent window
+    // The UserManager in the parent will handle the callback
+    parent.postMessage(location.href, location.origin);
+  </script>
+</body>
+</html>

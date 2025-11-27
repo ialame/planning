@@ -1,0 +1,14 @@
+<!-- Add this dependency to your pom.xml -->
+<!-- OAuth2 Resource Server for JWT validation -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+</dependency>
+
+<!-- Optional: OAuth2 Client if you need server-side OAuth flows -->
+<!--
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-oauth2-client</artifactId>
+</dependency>
+-->
