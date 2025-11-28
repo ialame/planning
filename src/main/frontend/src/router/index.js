@@ -4,11 +4,17 @@ import Orders from '../views/Orders.vue'
 import Employees from '../views/Employees.vue'
 import Planning from '../views/Planning.vue'
 import Teams from '../views/Teams.vue'
-import ApiSync from '../views/DataSync.vue' 
+import ApiSync from '../views/DataSync.vue'
 
+import Callback from '../views/auth/OAuthCallback.vue'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    {
+      path: '/callback',
+      name: 'oauth-callback',
+      component: Callback
+    },
     {
       path: '/',
       name: 'dashboard',
@@ -30,7 +36,7 @@ const router = createRouter({
       component: Planning
     },
     {
-      path: '/groups',          
+      path: '/groups',
       name: 'groups',
       component: Teams
     },

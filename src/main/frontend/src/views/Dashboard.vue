@@ -292,7 +292,7 @@
                 </div>
                 <div class="activity-badge">{{ employee.email.split('@')[0] }}</div>
               </div>
-              <div v-if="employees.length > 5" class="activity-more">
+              <div v-if="(employees || []).length > 5" class="activity-more">
                 + {{ employees.length - 5 }} more employees
               </div>
             </div>
@@ -350,6 +350,7 @@
 </template>
 
 <script>
+import authService from '@/services/authService'
 export default {
   name: 'PokemonDashboard',
   data() {
@@ -461,7 +462,7 @@ export default {
     async checkBackend() {
       this.checkingBackend = true
       try {
-        const response = await fetch('http://localhost:8080/actuator/health')
+        const response = await authService.get('/actuator/health')
         this.backendConnected = response.ok
       } catch (error) {
         this.backendConnected = false
@@ -472,7 +473,7 @@ export default {
     async checkSymfony() {
       this.checkingSymfony = true
       try {
-        const response = await fetch('http://localhost:8000/api/health', {
+        const response = await authService.get('/api/health', {
           method: 'GET',
           headers: { 'Accept': 'application/json' }
         })
@@ -487,7 +488,7 @@ export default {
     async syncData() {
       this.syncing = true
       try {
-        const response = await fetch('http://localhost:8080/api/sync/all', {
+        const response = await authService.get('/api/sync/all', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' }
         })
@@ -538,18 +539,15 @@ export default {
     async loadStats() {
       this.loadingStats = true
       try {
-        const [orders, employees, planning] = await Promise.all([
-          fetch('http://localhost:8080/api/orders?page=0&size=1'),
-          fetch('http://localhost:8080/api/employees'),
-          fetch('http://localhost:8080/api/planning/assignments')
+        const [ordersData, employeesData, planningData] = await Promise.all([
+          authService.get('/api/orders?page=0&size=1'),
+          authService.get('/api/employees'),
+          authService.get('/api/planning/assignments')
         ])
-        const ordersData = await orders.json()
-        const employeesData = await employees.json()
-        const planningData = await planning.json()
         this.stats = {
           ordersCount: ordersData.totalElements || 0,
-          employeesCount: employeesData.length || 0,
-          planningCount: planningData.length || 0
+          employeesCount: Array.isArray(employeesData) ? employeesData.length : (employeesData.content?.length || 0),
+          planningCount: Array.isArray(planningData) ? planningData.length : 0
         }
       } catch (error) {
         console.error('Error loading stats:', error)
@@ -559,10 +557,18 @@ export default {
     },
     async loadEmployees() {
       try {
-        const response = await fetch('http://localhost:8080/api/employees')
-        this.employees = await response.json()
+        const data = await authService.get('/api/employees')
+
+        if (Array.isArray(data)) {
+          this.employees = data
+        } else if (data && Array.isArray(data.content)) {
+          this.employees = data.content
+        } else {
+          this.employees = []
+        }
       } catch (error) {
         console.error('Error loading employees:', error)
+        this.employees = []
       }
     },
     async refreshStats() {
@@ -572,7 +578,7 @@ export default {
     async generatePlanning() {
       this.generatingPlanning = true
       try {
-        const response = await fetch('http://localhost:8080/api/planning/generate', {
+        const response = await authService.get('/api/planning/generate', {
           method: 'POST'
         })
         if (response.ok) {

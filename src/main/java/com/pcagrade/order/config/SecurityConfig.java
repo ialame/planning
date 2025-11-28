@@ -1,11 +1,10 @@
 package com.pcagrade.order.config;
 
-import com.pcagrade.order.config.ApiKeyAuthenticationFilter;
-import com.pcagrade.order.config.JwtAuthenticationFilter;
-import org.springframework.http.HttpMethod;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.convert.converter.Converter;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -14,17 +13,24 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Configuration
 @EnableWebSecurity
@@ -32,9 +38,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthenticationFilter jwtAuthFilter;
     private final ApiKeyAuthenticationFilter apiKeyAuthFilter;
-
     private final UserDetailsService userDetailsService;
 
     @Bean
@@ -72,7 +76,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/planning/**").authenticated()
                         .requestMatchers("/api/work-assignments/**").authenticated()
 
-                        //  TEAMS - Autoriser toutes les méthodes HTTP
+                        // TEAMS
                         .requestMatchers(HttpMethod.GET, "/api/teams/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/v2/teams/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/teams/**").hasAnyRole("ADMIN", "MANAGER")
@@ -101,19 +105,88 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
+                // OAuth2 Resource Server for Authentik tokens
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
+                )
                 .authenticationProvider(authenticationProvider())
-                .addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                // API Key filter for Symfony sync (runs before OAuth2)
+                .addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    /**
+     * Convert Authentik JWT claims to Spring Security authorities
+     */
+    @Bean
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+        converter.setJwtGrantedAuthoritiesConverter(new AuthentikGrantedAuthoritiesConverter());
+        return converter;
+    }
+
+    /**
+     * Custom converter for Authentik groups → Spring Security roles
+     */
+    static class AuthentikGrantedAuthoritiesConverter implements Converter<Jwt, Collection<GrantedAuthority>> {
+
+        @Override
+        public Collection<GrantedAuthority> convert(Jwt jwt) {
+            Collection<GrantedAuthority> authorities = new ArrayList<>();
+
+            // Extract groups from Authentik token
+            List<String> groups = jwt.getClaimAsStringList("groups");
+            if (groups == null) {
+                // Try alternative claim names
+                Object groupsClaim = jwt.getClaim("groups");
+                if (groupsClaim instanceof List) {
+                    groups = ((List<?>) groupsClaim).stream()
+                            .map(Object::toString)
+                            .collect(Collectors.toList());
+                }
+            }
+
+            if (groups != null) {
+                for (String group : groups) {
+                    String role = mapGroupToRole(group);
+                    authorities.add(new SimpleGrantedAuthority(role));
+                }
+            }
+
+            // Default role if no groups
+            if (authorities.isEmpty()) {
+                authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
+            }
+
+            return authorities;
+        }
+
+        private String mapGroupToRole(String group) {
+            String normalized = group.toLowerCase().trim();
+
+            return switch (normalized) {
+                case "admins", "admin", "administrators", "authentik admins" -> "ROLE_ADMIN";
+                case "managers", "manager" -> "ROLE_MANAGER";
+                case "noteurs", "noteur", "graders" -> "ROLE_NOTEUR";
+                case "certificateurs", "certificateur", "certifiers" -> "ROLE_CERTIFICATEUR";
+                case "scanneurs", "scanneur", "scanners" -> "ROLE_SCANNEUR";
+                case "emballeurs", "emballeur", "packagers" -> "ROLE_EMBALLEUR";
+                default -> "ROLE_" + group.toUpperCase().replace(" ", "_");
+            };
+        }
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:3000", "http://localhost:5173"));
+        configuration.setAllowedOrigins(List.of(
+                "http://localhost:3000",
+                "http://localhost:5173",
+                "http://127.0.0.1:3000"
+        ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("*"));
+        configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
 

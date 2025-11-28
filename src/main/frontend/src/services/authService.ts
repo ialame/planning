@@ -106,10 +106,10 @@ class AuthService {
    */
   private mapUser(user: User): AppUser {
     const profile = user.profile
-    
+
     // Extract groups from Authentik claims
     const groups: string[] = (profile[claimMappings.groupsClaim] as string[]) || []
-    
+
     // Map groups to roles
     const roles = groups.map(group => {
       const mappedRole = claimMappings.roleMapping[group.toLowerCase()]
@@ -142,7 +142,7 @@ class AuthService {
       if (returnUrl) {
         sessionStorage.setItem('auth_return_url', returnUrl)
       }
-      
+
       console.log('🔐 Starting login flow...')
       await this.userManager.signinRedirect()
     } catch (error) {
@@ -202,8 +202,30 @@ class AuthService {
   /**
    * Get access token for API calls
    */
+  /**
+   * Get access token for API calls
+   */
   getAccessToken(): string | null {
-    return this.currentUser?.accessToken || null
+    // First try from currentUser
+    if (this.currentUser?.accessToken) {
+      return this.currentUser.accessToken
+    }
+
+    // Fallback: try to get from localStorage directly
+    const storageKey = `oidc.user:${oidcConfig.authority}:${oidcConfig.client_id}`
+    const stored = localStorage.getItem(storageKey)
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored)
+        if (parsed.access_token) {
+          return parsed.access_token
+        }
+      } catch (e) {
+        console.warn('Could not parse stored token')
+      }
+    }
+
+    return null
   }
 
   /**
@@ -277,7 +299,81 @@ class AuthService {
   async handleSilentRenewCallback(): Promise<void> {
     await this.userManager.signinSilentCallback()
   }
+
+  // ==================== HTTP HELPERS ====================
+
+  /**
+   * Make authenticated GET request
+   */
+  async get(url: string): Promise<any> {
+    const fullUrl = url.startsWith('http') ? url : `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}${url}`
+    const response = await fetch(fullUrl, {
+      headers: {
+        'Authorization': `Bearer ${this.getAccessToken()}`,
+        'Content-Type': 'application/json'
+      }
+    })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    return response.json()
+  }
+
+  /**
+   * Make authenticated POST request
+   */
+  async post(url: string, data?: any): Promise<any> {
+    const fullUrl = url.startsWith('http') ? url : `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}${url}`
+    const response = await fetch(fullUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.getAccessToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: data ? JSON.stringify(data) : undefined
+    })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const text = await response.text()
+    return text ? JSON.parse(text) : {}
+  }
+
+  /**
+   * Make authenticated PUT request
+   */
+  async put(url: string, data?: any): Promise<any> {
+    const fullUrl = url.startsWith('http') ? url : `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}${url}`
+    const response = await fetch(fullUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${this.getAccessToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: data ? JSON.stringify(data) : undefined
+    })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const text = await response.text()
+    return text ? JSON.parse(text) : {}
+  }
+
+  /**
+   * Make authenticated DELETE request
+   */
+  async delete(url: string): Promise<any> {
+    const fullUrl = url.startsWith('http') ? url : `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}${url}`
+    const response = await fetch(fullUrl, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.getAccessToken()}`,
+        'Content-Type': 'application/json'
+      }
+    })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const text = await response.text()
+    return text ? JSON.parse(text) : {}
+  }
+
+
 }
+
+
 
 // Export singleton instance
 const authService = new AuthService()

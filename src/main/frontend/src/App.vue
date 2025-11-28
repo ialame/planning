@@ -1,85 +1,131 @@
 <template>
-  <div id="app" class="min-h-screen bg-gray-100">
+  <div id="app" class="min-h-screen bg-gray-50">
 
+    <!-- Callback/Silent-renew routes - bypass auth check -->
+    <template v-if="isCallbackRoute">
+      <router-view />
+    </template>
 
-    <!-- Navigation -->
-    <nav class="bg-blue-600 text-white shadow-lg">
-      <div class="max-w-7xl mx-auto px-4">
-        <!-- Login Modal -->
-        <LoginModal v-if="!isAuthenticated" @login-success="onLoginSuccess" />
-        <!-- Main App (only if authenticated) -->
-        <div v-if="isAuthenticated">
-          <nav class="bg-gray-800 text-white p-4 flex justify-between">
-            <span>Welcome, {{ user?.email }}</span>
-            <button
-              @click="logout"
-              class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded"
-            >
-              Logout
-            </button>
-          </nav>
+    <!-- Loading Overlay -->
+    <template v-else-if="isLoading">
+      <div class="fixed inset-0 bg-white bg-opacity-80 flex items-center justify-center z-50">
+        <div class="text-center">
+          <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p class="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    </template>
 
+    <!-- Main App (authenticated) -->
+    <template v-else-if="isAuthenticated">
+      <nav class="bg-gray-800 text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4">
           <div class="flex justify-between items-center h-16">
-            <div class="flex items-center">
-              <h1 class="text-xl font-bold">🃏 Pokemon Card Planning</h1>
+            <!-- Logo -->
+            <div class="flex items-center gap-3">
+              <span class="text-2xl">🎴</span>
+              <h1 class="text-xl font-bold">Pokemon Card Planning</h1>
             </div>
-            <div class="flex space-x-4">
+
+            <!-- User Info & Logout -->
+            <div class="flex items-center gap-4">
+              <span class="text-sm text-gray-300">{{ user?.email }}</span>
               <button
-                v-for="tab in tabs"
-                :key="tab.id"
-                @click="changeTab(tab.id)"
-                :class="[
-                'px-4 py-2 rounded-md transition-colors',
-                activeTab === tab.id
-                  ? 'bg-blue-700 text-white'
-                  : 'text-blue-100 hover:text-white hover:bg-blue-500'
-              ]"
+                @click="logout"
+                class="px-3 py-1.5 bg-red-600 hover:bg-red-700 rounded text-sm transition"
               >
-                {{ tab.label }}
+                Logout
               </button>
             </div>
           </div>
+
+          <!-- Tab Navigation -->
+          <div class="flex space-x-1 pb-2 overflow-x-auto">
+            <router-link
+              to="/"
+              class="px-4 py-2 rounded-t-lg transition-colors"
+              :class="route.path === '/' ? 'bg-gray-50 text-gray-800' : 'text-gray-400 hover:text-white hover:bg-gray-700'"
+            >
+              📊 Dashboard
+            </router-link>
+            <router-link
+              to="/orders"
+              class="px-4 py-2 rounded-t-lg transition-colors"
+              :class="route.path === '/orders' ? 'bg-gray-50 text-gray-800' : 'text-gray-400 hover:text-white hover:bg-gray-700'"
+            >
+              📋 Orders
+            </router-link>
+            <router-link
+              to="/employees"
+              class="px-4 py-2 rounded-t-lg transition-colors"
+              :class="route.path === '/employees' ? 'bg-gray-50 text-gray-800' : 'text-gray-400 hover:text-white hover:bg-gray-700'"
+            >
+              👥 Employees
+            </router-link>
+            <router-link
+              to="/planning"
+              class="px-4 py-2 rounded-t-lg transition-colors"
+              :class="route.path === '/planning' ? 'bg-gray-50 text-gray-800' : 'text-gray-400 hover:text-white hover:bg-gray-700'"
+            >
+              📅 Planning
+            </router-link>
+            <router-link
+              to="/groups"
+              class="px-4 py-2 rounded-t-lg transition-colors"
+              :class="route.path === '/groups' ? 'bg-gray-50 text-gray-800' : 'text-gray-400 hover:text-white hover:bg-gray-700'"
+            >
+              🏢 Teams
+            </router-link>
+            <router-link
+              to="/sync"
+              class="px-4 py-2 rounded-t-lg transition-colors"
+              :class="route.path === '/sync' ? 'bg-gray-50 text-gray-800' : 'text-gray-400 hover:text-white hover:bg-gray-700'"
+            >
+              🔄 Sync
+            </router-link>
+          </div>
         </div>
+      </nav>
+
+      <main class="max-w-7xl mx-auto px-4 py-6">
+        <router-view />
+      </main>
+
+      <footer class="bg-gray-100 border-t mt-8 py-4">
+        <div class="max-w-7xl mx-auto px-4 text-center text-gray-500 text-sm">
+          Pokemon Card Planning System © 2025 PCA Grade
+        </div>
+      </footer>
+    </template>
+
+    <!-- Not authenticated - show login -->
+    <template v-else>
+      <LoginModal @login-success="onLoginSuccess" />
+    </template>
+
+    <!-- Notification Toast -->
+    <Transition name="fade">
+      <div
+        v-if="notification.show"
+        :class="[
+          'fixed bottom-4 right-4 px-4 py-2 rounded-lg shadow-lg text-white',
+          notification.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+        ]"
+      >
+        {{ notification.message }}
       </div>
-    </nav>
-
-    <!-- Contenu principal -->
-    <main class="max-w-7xl mx-auto px-4 py-6">
-      <!-- Dashboard -->
-      <DashboardView v-if="activeTab === 'dashboard'" @go-to-tab="changeTab" />
-
-      <!-- Orders -->
-      <OrdersView v-if="activeTab === 'orders'" />
-
-      <!-- Employees with Planning integrated -->
-      <EmployeesView v-if="activeTab === 'employees'" />
-
-      <!-- Global Planning -->
-      <PlanningView v-if="activeTab === 'planning'" />
-
-      <!-- NOUVEAU -->
-      <TeamsView v-if="activeTab === 'teams'" />
-      <!-- NOUVEAU -->
-      <SyncView v-if="activeTab === 'sync'" />
-
-
-    </main>
-
-    <!-- Notifications -->
-    <div
-      v-if="notification.show"
-      :class="[
-        'fixed top-4 right-4 p-4 rounded-lg shadow-lg transition-all z-50',
-        notification.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-      ]"
-    >
-      {{ notification.message }}
-    </div>
+    </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, provide, computed } from 'vue'
+import { useRoute } from 'vue-router'
+
+const route = useRoute()
+
+// Computed for callback detection
+const isCallbackRoute = computed(() => route.path === '/callback' || route.path === '/silent-renew')
 import DashboardView from './views/Dashboard.vue'
 import OrdersView from './views/Orders.vue'
 import EmployeesView from './views/Employees.vue'
@@ -94,7 +140,7 @@ import LoginModal from '@/components/LoginModal.vue'
 //const isAuthenticated = computed(() => authService.isAuthenticated())
 
 
-const { isAuthenticated, user } = useAuth()
+const { isAuthenticated, user, isLoading } = useAuth()
 
 function onLoginSuccess(userData: any) {
   console.log('✅ Login successful:', userData)

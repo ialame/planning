@@ -15,16 +15,20 @@ const errorMessage = ref<string>('')
 onMounted(async () => {
   try {
     console.log('🔐 Processing OAuth callback...')
-    
+
     // Process the callback
     const user = await handleCallback()
-    
+
     status.value = 'success'
     console.log('✅ Login successful:', user.email)
 
     // Get return URL or default to dashboard
-    const returnUrl = getReturnUrl() || '/'
-    
+    let returnUrl = getReturnUrl() || '/'
+// Validate it's a proper path
+    if (!returnUrl.startsWith('/')) {
+      returnUrl = '/'
+    }
+
     // Small delay to show success message
     setTimeout(() => {
       router.push(returnUrl)
@@ -45,7 +49,7 @@ function retryLogin() {
 <template>
   <div class="min-h-screen flex items-center justify-center bg-gray-100">
     <div class="bg-white p-8 rounded-lg shadow-lg max-w-md w-full text-center">
-      
+
       <!-- Processing -->
       <template v-if="status === 'processing'">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
@@ -73,7 +77,7 @@ function retryLogin() {
         </div>
         <h2 class="text-xl font-semibold text-gray-800 mb-2">Authentication Failed</h2>
         <p class="text-red-600 mb-4">{{ errorMessage || error }}</p>
-        <button 
+        <button
           @click="retryLogin"
           class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
         >
