@@ -1,0 +1,66 @@
+databaseChangeLog:
+  # ===============================================
+  # POKEMON CARD ORDER PLANNING SYSTEM
+  # Master Liquibase Changelog
+  # ===============================================
+  #
+  # MANAGED TABLES (by Liquibase):
+  # - employee
+  # - team (roles)
+  # - employee_team (many-to-many junction)
+  # - planning
+  # - j_status_workflow
+  # - j_delai_priority_mapping
+  #
+  # READ-ONLY TABLES (not managed):
+  # - order (shared with Symfony)
+  # - card (shared catalog)
+  # - card_translation
+  # - card_certification
+  # - card_certification_order
+  #
+  # ===============================================
+
+  # ========================================
+  # SCHEMA CHANGES - Core Tables
+  # ========================================
+
+  # Employee table - card processing team members
+  - include:
+      file: db/changelog/changes/001-create-employee-table.yml
+      context: development,docker,production
+
+
+  # ========================================
+  # SCHEMA CHANGES - User Management
+  # ========================================
+
+  # Team/Role table
+  - include:
+      file: db/changelog/changes/003-create-team-table.yml
+      context: development,docker,production
+
+  # Employee-Team junction table (many-to-many)
+  - include:
+      file: db/changelog/changes/004-create-employee-team-table.yml
+      context: development,docker,production
+
+  # ========================================
+  # SCHEMA CHANGES - Reference Data
+  # (To be created when needed)
+  # ========================================
+
+  # Status workflow definitions
+  # - include:
+  #     file: db/changelog/changes/005-create-status-workflow-table.yml
+  #     context: development,docker,production
+
+  # Priority mapping (delai codes)
+  # - include:
+  #     file: db/changelog/changes/006-create-delai-priority-mapping.yml
+  #     context: development,docker,production
+
+  # ========================================
+  # INITIAL DATA
+  # ========================================
+  # Data is initialized via EmployeeRoleInitializer.java
