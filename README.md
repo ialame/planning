@@ -138,7 +138,7 @@ git clone <your-repo-url>
 cd planning2
 
 # Create local configuration from template
-cp src/main/resources/application-local.properties.example \
+cp src/main/resources/application-local.properties \
    src/main/resources/application-local.properties
 
 # Edit with your credentials
@@ -270,7 +270,7 @@ The application uses different profiles for different environments:
 Create from template:
 
 ```bash
-cp src/main/resources/application-local.properties.example \
+cp src/main/resources/application-local.properties \
    src/main/resources/application-local.properties
 ```
 
@@ -1747,7 +1747,7 @@ FLUSH PRIVILEGES;
 EXIT;
 
 # 2. Create local config
-cp src/main/resources/application-local.properties.example \
+cp src/main/resources/application-local.properties \
    src/main/resources/application-local.properties
 
 # Edit and set your credentials

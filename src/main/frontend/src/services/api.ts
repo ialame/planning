@@ -1,171 +1,65 @@
-// src/services/api.ts
-// HTTP client with OAuth2 authentication
-
-import authService from './authService'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+// API Configuration for Pokemon Card Planning
+// Automatically detects environment and uses appropriate API URL
 
 /**
- * API Error class
+ * Determine API base URL based on environment
+ * - Production: Use backend LoadBalancer external IP
+ * - Development (localhost): Use localhost:8010 (Docker) or 8080 (local dev)
+ * - Can be overridden with VITE_API_BASE_URL environment variable
  */
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    public statusText: string,
-    message: string,
-    public data?: any
-  ) {
-    super(message)
-    this.name = 'ApiError'
-  }
-}
-
-/**
- * Request options interface
- */
-interface RequestOptions extends RequestInit {
-  skipAuth?: boolean
-}
-
-/**
- * Make an authenticated API request
- */
-async function request<T>(
-  endpoint: string,
-  options: RequestOptions = {}
-): Promise<T> {
-  const { skipAuth = false, ...fetchOptions } = options
-
-  // Build URL
-  const url = endpoint.startsWith('http') 
-    ? endpoint 
-    : `${API_BASE_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`
-
-  // Build headers
-  const headers = new Headers(fetchOptions.headers)
-
-  // Add Content-Type if not set and we have a body
-  if (fetchOptions.body && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json')
+function getApiBaseUrl(): string {
+  // Allow manual override via environment variable
+  if (import.meta.env.VITE_API_BASE_URL !== undefined && import.meta.env.VITE_API_BASE_URL !== '') {
+    console.log('✅ Using VITE_API_BASE_URL from environment:', import.meta.env.VITE_API_BASE_URL)
+    return import.meta.env.VITE_API_BASE_URL
   }
 
-  // Add Authorization header if authenticated and not skipped
-  if (!skipAuth) {
-    const token = authService.getAccessToken()
-    if (token) {
-      headers.set('Authorization', `Bearer ${token}`)
+  // Check if we're running on localhost (development)
+  const hostname = window.location.hostname
+  const isLocalhost = hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('10.')
+
+  console.log('🔍 Detected hostname:', hostname)
+  console.log('🔍 Is localhost:', isLocalhost)
+
+  // In development, point to local backend
+  // Port 8010 for Docker, port 8080 for direct local dev
+  if (isLocalhost) {
+    // Check which port is likely in use based on frontend port
+    const frontendPort = window.location.port
+    
+    // If frontend is on 8012 (Docker), backend is on 8010
+    // If frontend is on 3000/5173 (local dev), backend is on 8080
+    if (frontendPort === '8012') {
+      console.log('🐳 Docker mode detected - Using API URL: http://localhost:8010')
+      return 'http://localhost:8010'
     }
+    
+    console.log('💻 Local dev mode - Using API URL: http://localhost:8080')
+    return 'http://localhost:8080'
   }
 
-  // Make request
-  const response = await fetch(url, {
-    ...fetchOptions,
-    headers,
-  })
+  // In production on Kubernetes/DigitalOcean
+  // Use the backend LoadBalancer service on same IP but port 8080
+  const backendUrl = `http://${hostname}:8080`
+  console.log('🌐 Using production API URL:', backendUrl)
 
-  // Handle response
-  if (!response.ok) {
-    // Handle 401 - token might be expired
-    if (response.status === 401) {
-      console.warn(' API returned 401, attempting token refresh...')
-      
-      try {
-        await authService.refreshToken()
-        // Retry request with new token
-        const newToken = authService.getAccessToken()
-        if (newToken) {
-          headers.set('Authorization', `Bearer ${newToken}`)
-          const retryResponse = await fetch(url, { ...fetchOptions, headers })
-          
-          if (retryResponse.ok) {
-            const data = await retryResponse.json()
-            return data as T
-          }
-        }
-      } catch (refreshError) {
-        console.error('Token refresh failed:', refreshError)
-        // Redirect to login
-        await authService.login(window.location.pathname)
-        throw new ApiError(401, 'Unauthorized', 'Session expired')
-      }
-    }
-
-    // Parse error response
-    let errorData: any
-    try {
-      errorData = await response.json()
-    } catch {
-      errorData = { message: response.statusText }
-    }
-
-    throw new ApiError(
-      response.status,
-      response.statusText,
-      errorData.message || errorData.error || 'API request failed',
-      errorData
-    )
-  }
-
-  // Parse successful response
-  const contentType = response.headers.get('Content-Type')
-  if (contentType?.includes('application/json')) {
-    return response.json()
-  }
-
-  // Return empty object for non-JSON responses
-  return {} as T
+  return backendUrl
 }
 
-/**
- * API client with typed methods
- */
-export const api = {
-  /**
-   * GET request
-   */
-  async get<T>(endpoint: string, options?: RequestOptions): Promise<T> {
-    return request<T>(endpoint, { ...options, method: 'GET' })
-  },
+export const API_BASE_URL: string = getApiBaseUrl()
 
-  /**
-   * POST request
-   */
-  async post<T>(endpoint: string, data?: any, options?: RequestOptions): Promise<T> {
-    return request<T>(endpoint, {
-      ...options,
-      method: 'POST',
-      body: data ? JSON.stringify(data) : undefined,
-    })
-  },
+export const API_ENDPOINTS = {
+  EMPLOYEES: `${API_BASE_URL}/api/employees`,
+  PLANNING: `${API_BASE_URL}/api/planning`,
+  ORDERS: `${API_BASE_URL}/api/orders`
+} as const
 
-  /**
-   * PUT request
-   */
-  async put<T>(endpoint: string, data?: any, options?: RequestOptions): Promise<T> {
-    return request<T>(endpoint, {
-      ...options,
-      method: 'PUT',
-      body: data ? JSON.stringify(data) : undefined,
-    })
-  },
-
-  /**
-   * PATCH request
-   */
-  async patch<T>(endpoint: string, data?: any, options?: RequestOptions): Promise<T> {
-    return request<T>(endpoint, {
-      ...options,
-      method: 'PATCH',
-      body: data ? JSON.stringify(data) : undefined,
-    })
-  },
-
-  /**
-   * DELETE request
-   */
-  async delete<T>(endpoint: string, options?: RequestOptions): Promise<T> {
-    return request<T>(endpoint, { ...options, method: 'DELETE' })
-  },
-}
-
-export default api
+// Log the final configuration
+console.log('📡  API Configuration loaded')
+console.log('📡  Base URL:', API_BASE_URL || '(relative URL)')
+console.log('📡  Employees:', API_ENDPOINTS.EMPLOYEES)
+console.log('📡  Orders:', API_ENDPOINTS.ORDERS)
+console.log('📡  Planning:', API_ENDPOINTS.PLANNING)

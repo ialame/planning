@@ -4,7 +4,7 @@
 /**
  * Determine API base URL based on environment
  * - Production: Use backend LoadBalancer external IP
- * - Development (localhost): Use localhost:8080
+ * - Development (localhost): Use localhost:8010
  * - Can be overridden with VITE_API_BASE_URL environment variable
  */
 function getApiBaseUrl(): string {
@@ -26,8 +26,8 @@ function getApiBaseUrl(): string {
 
   // In development, point to local backend
   if (isLocalhost) {
-    console.log(' Using development API URL: http://localhost:8080')
-    return 'http://localhost:8080'
+    console.log(' Using development API URL: http://localhost:8010')
+    return 'http://localhost:8010'
   }
 
   // In production on Kubernetes/DigitalOcean

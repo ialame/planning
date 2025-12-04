@@ -1,6 +1,7 @@
 package com.pcagrade.order.config;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
@@ -32,16 +33,21 @@ import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Main Security Configuration with OAuth2/Authentik support.
+ *
+ * This configuration is DISABLED when security.oauth2.disabled=true
+ * In that case, DockerSecurityConfig is used instead.
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "security.oauth2.disabled", havingValue = "false", matchIfMissing = true)
 public class SecurityConfig {
 
     private final ApiKeyAuthenticationFilter apiKeyAuthFilter;
     private final UserDetailsService userDetailsService;
-
-    // DELETED: private final JwtAuthenticationFilter jwtAuthFilter;
 
     @Bean
     public AuthenticationProvider authenticationProvider() {
@@ -115,8 +121,6 @@ public class SecurityConfig {
                 // API Key filter for Symfony sync
                 .addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
-        // DELETED: .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
-
         return http.build();
     }
 
@@ -135,54 +139,40 @@ public class SecurityConfig {
 
             List<String> groups = jwt.getClaimAsStringList("groups");
             if (groups == null) {
-                Object groupsClaim = jwt.getClaim("groups");
-                if (groupsClaim instanceof List) {
-                    groups = ((List<?>) groupsClaim).stream()
-                            .map(Object::toString)
-                            .collect(Collectors.toList());
-                }
+                groups = List.of();
             }
 
-            if (groups != null) {
-                for (String group : groups) {
-                    String role = mapGroupToRole(group);
-                    authorities.add(new SimpleGrantedAuthority(role));
-                }
-            }
-
-            if (authorities.isEmpty()) {
-                authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
+            // Map Authentik groups to Spring Security roles
+            for (String group : groups) {
+                String role = mapGroupToRole(group);
+                authorities.add(new SimpleGrantedAuthority(role));
             }
 
             return authorities;
         }
 
         private String mapGroupToRole(String group) {
-            String normalized = group.toLowerCase().trim();
+            // Normalize group name to uppercase with ROLE_ prefix
+            String normalized = group.toUpperCase()
+                    .replace(" ", "_")
+                    .replace("-", "_");
 
-            return switch (normalized) {
-                case "admins", "admin", "administrators", "authentik admins" -> "ROLE_ADMIN";
-                case "managers", "manager" -> "ROLE_MANAGER";
-                case "noteurs", "noteur", "graders" -> "ROLE_NOTEUR";
-                case "certificateurs", "certificateur", "certifiers" -> "ROLE_CERTIFICATEUR";
-                case "scanneurs", "scanneur", "scanners" -> "ROLE_SCANNEUR";
-                case "emballeurs", "emballeur", "packagers" -> "ROLE_EMBALLEUR";
-                default -> "ROLE_" + group.toUpperCase().replace(" ", "_");
-            };
+            if (!normalized.startsWith("ROLE_")) {
+                normalized = "ROLE_" + normalized;
+            }
+
+            return normalized;
         }
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
+        System.out.println(" CORS FILTER ACTIVATED - ALLOWING ALL ORIGINS");
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of(
-                "http://localhost:3000",
-                "http://localhost:5173",
-                "http://127.0.0.1:3000"
-        ));
+        configuration.setAllowedOrigins(List.of("*"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
-        configuration.setAllowCredentials(true);
+        configuration.setAllowCredentials(false);
         configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
