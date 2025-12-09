@@ -1,9 +1,16 @@
 // src/services/authService.ts
 // Simple OIDC Authentication Service for Authentik
-// No token refresh logic - simple authentication only
+// Supports Docker mode with authentication disabled
 
 import { UserManager, User } from 'oidc-client-ts'
 import { oidcConfig, claimMappings } from '@/config/oidc.config'
+
+/**
+ * Check if authentication is disabled (Docker dev mode)
+ */
+const isAuthDisabled = (): boolean => {
+  return import.meta.env.VITE_AUTH_DISABLED === 'true'
+}
 
 /**
  * Simple User interface
@@ -19,27 +26,52 @@ export interface AppUser {
   accessToken: string
   idToken: string
   expiresAt?: number
-  raw: User
+  raw: User | null
+}
+
+/**
+ * Mock user for Docker dev mode
+ */
+const MOCK_USER: AppUser = {
+  id: 'docker-dev-user',
+  email: 'dev@localhost',
+  name: 'Docker Dev User',
+  firstName: 'Docker',
+  lastName: 'Dev',
+  roles: ['ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_USER'],
+  groups: ['admin', 'managers'],
+  accessToken: 'docker-dev-token',
+  idToken: 'docker-dev-id-token',
+  expiresAt: Date.now() / 1000 + 86400 * 365, // 1 year
+  raw: null
 }
 
 /**
  * Simple Authentication Service
  * Handles basic login/logout with Authentik
+ * Supports Docker mode with authentication disabled
  */
 class AuthService {
-  private userManager: UserManager
+  private userManager: UserManager | null = null
   private currentUser: AppUser | null = null
 
   constructor() {
-    this.userManager = new UserManager(oidcConfig)
-    this.setupEventListeners()
-    this.initializeUser()
+    if (isAuthDisabled()) {
+      console.log('🔓 Auth DISABLED (Docker dev mode)')
+      this.currentUser = MOCK_USER
+    } else {
+      this.userManager = new UserManager(oidcConfig)
+      this.setupEventListeners()
+      this.initializeUser()
+    }
   }
 
   /**
    * Simple event listeners - no token refresh logic
    */
   private setupEventListeners(): void {
+    if (!this.userManager) return
+
     // User loaded on login
     this.userManager.events.addUserLoaded((user) => {
       console.log('User loaded:', user.profile.email)
@@ -63,6 +95,8 @@ class AuthService {
    * Initialize user from storage
    */
   private async initializeUser(): Promise<void> {
+    if (!this.userManager) return
+
     try {
       const user = await this.userManager.getUser()
       if (user && !user.expired) {
@@ -115,13 +149,20 @@ class AuthService {
    * Start login
    */
   async login(returnUrl?: string): Promise<void> {
+    // In Docker mode, just redirect to home
+    if (isAuthDisabled()) {
+      console.log('🔓 Auth disabled - skipping login')
+      window.location.href = returnUrl || '/'
+      return
+    }
+
     try {
       if (returnUrl) {
         sessionStorage.setItem('auth_return_url', returnUrl)
       }
 
       console.log('Starting login...')
-      await this.userManager.signinRedirect()
+      await this.userManager!.signinRedirect()
     } catch (error) {
       console.error('Login error:', error)
       throw error
@@ -132,9 +173,14 @@ class AuthService {
    * Handle callback after login
    */
   async handleCallback(): Promise<AppUser> {
+    // In Docker mode, return mock user
+    if (isAuthDisabled()) {
+      return MOCK_USER
+    }
+
     try {
       console.log('Processing callback...')
-      const user = await this.userManager.signinRedirectCallback()
+      const user = await this.userManager!.signinRedirectCallback()
       this.currentUser = this.mapUser(user)
       console.log('Login successful:', this.currentUser.email)
       return this.currentUser
@@ -148,13 +194,20 @@ class AuthService {
    * Logout
    */
   async logout(): Promise<void> {
+    // In Docker mode, just redirect to home
+    if (isAuthDisabled()) {
+      console.log('🔓 Auth disabled - skipping logout')
+      window.location.href = '/'
+      return
+    }
+
     try {
       console.log('Logging out...')
-      await this.userManager.signoutRedirect()
+      await this.userManager!.signoutRedirect()
     } catch (error) {
       console.error('Logout error:', error)
       // Local logout if redirect fails
-      await this.userManager.removeUser()
+      await this.userManager!.removeUser()
       this.currentUser = null
       throw error
     }
@@ -164,7 +217,11 @@ class AuthService {
    * Silent logout (local only)
    */
   async silentLogout(): Promise<void> {
-    await this.userManager.removeUser()
+    if (isAuthDisabled()) {
+      return
+    }
+
+    await this.userManager!.removeUser()
     this.currentUser = null
     console.log('Silent logout completed')
   }
@@ -180,15 +237,20 @@ class AuthService {
    * Get access token
    */
   getAccessToken(): string | null {
+    // In Docker mode, return mock token
+    if (isAuthDisabled()) {
+      return 'docker-dev-token'
+    }
+
     // Return token if user exists and token not expired
     if (this.currentUser?.accessToken && !this.isTokenExpired()) {
       return this.currentUser.accessToken
     }
-    
-    // Tryin to get from storage
+
+    // Try to get from storage
     const storageKey = `oidc.user:${oidcConfig.authority}:${oidcConfig.client_id}`
     const stored = localStorage.getItem(storageKey)
-    
+
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
@@ -199,7 +261,7 @@ class AuthService {
         console.warn('Could not parse stored token')
       }
     }
-    
+
     return null
   }
 
@@ -207,6 +269,11 @@ class AuthService {
    * Check if authenticated
    */
   isAuthenticated(): boolean {
+    // In Docker mode, always authenticated
+    if (isAuthDisabled()) {
+      return true
+    }
+
     return this.currentUser !== null && !this.isTokenExpired()
   }
 
@@ -214,6 +281,11 @@ class AuthService {
    * Check if token expired
    */
   isTokenExpired(): boolean {
+    // In Docker mode, never expired
+    if (isAuthDisabled()) {
+      return false
+    }
+
     if (!this.currentUser?.expiresAt) return true
     return Date.now() / 1000 > this.currentUser.expiresAt
   }
@@ -259,11 +331,11 @@ class AuthService {
     if (url.startsWith('http')) {
       return url
     }
-    
+
     const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8010'
     const cleanBase = baseUrl.replace(/\/$/, '')
     const cleanUrl = url.startsWith('/') ? url : `/${url}`
-    
+
     return `${cleanBase}${cleanUrl}`
   }
 
@@ -271,23 +343,26 @@ class AuthService {
    * GET request
    */
   async get(url: string): Promise<any> {
-    const token = this.getAccessToken()
-    if (!token) {
-      throw new Error('No access token available')
+    const fullUrl = this.buildUrl(url)
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
     }
 
-    const fullUrl = this.buildUrl(url)
-    const response = await fetch(fullUrl, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+    // Only add auth header if not in Docker mode
+    if (!isAuthDisabled()) {
+      const token = this.getAccessToken()
+      if (!token) {
+        throw new Error('No access token available')
       }
-    })
-    
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
+    const response = await fetch(fullUrl, { headers })
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`)
     }
-    
+
     return response.json()
   }
 
@@ -295,25 +370,30 @@ class AuthService {
    * POST request
    */
   async post(url: string, data?: any): Promise<any> {
-    const token = this.getAccessToken()
-    if (!token) {
-      throw new Error('No access token available')
+    const fullUrl = this.buildUrl(url)
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
     }
 
-    const fullUrl = this.buildUrl(url)
+    // Only add auth header if not in Docker mode
+    if (!isAuthDisabled()) {
+      const token = this.getAccessToken()
+      if (!token) {
+        throw new Error('No access token available')
+      }
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
     const response = await fetch(fullUrl, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: data ? JSON.stringify(data) : undefined
     })
-    
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`)
     }
-    
+
     const text = await response.text()
     return text ? JSON.parse(text) : {}
   }
@@ -322,25 +402,30 @@ class AuthService {
    * PUT request
    */
   async put(url: string, data?: any): Promise<any> {
-    const token = this.getAccessToken()
-    if (!token) {
-      throw new Error('No access token available')
+    const fullUrl = this.buildUrl(url)
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
     }
 
-    const fullUrl = this.buildUrl(url)
+    // Only add auth header if not in Docker mode
+    if (!isAuthDisabled()) {
+      const token = this.getAccessToken()
+      if (!token) {
+        throw new Error('No access token available')
+      }
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
     const response = await fetch(fullUrl, {
       method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: data ? JSON.stringify(data) : undefined
     })
-    
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`)
     }
-    
+
     const text = await response.text()
     return text ? JSON.parse(text) : {}
   }
@@ -349,24 +434,29 @@ class AuthService {
    * DELETE request
    */
   async delete(url: string): Promise<any> {
-    const token = this.getAccessToken()
-    if (!token) {
-      throw new Error('No access token available')
+    const fullUrl = this.buildUrl(url)
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
     }
 
-    const fullUrl = this.buildUrl(url)
+    // Only add auth header if not in Docker mode
+    if (!isAuthDisabled()) {
+      const token = this.getAccessToken()
+      if (!token) {
+        throw new Error('No access token available')
+      }
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
     const response = await fetch(fullUrl, {
       method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
+      headers
     })
-    
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`)
     }
-    
+
     const text = await response.text()
     return text ? JSON.parse(text) : {}
   }
@@ -376,7 +466,7 @@ class AuthService {
    */
   getUserInfo() {
     if (!this.currentUser) return null
-    
+
     return {
       name: this.currentUser.name,
       email: this.currentUser.email,
