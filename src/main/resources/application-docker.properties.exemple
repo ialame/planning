@@ -1,0 +1,49 @@
+# ===============================================
+# DOCKER PROFILE CONFIGURATION
+# ===============================================
+
+# Database - Uses Docker service name 'db' and internal port 3306
+spring.datasource.url=jdbc:mariadb://db:3306/pokemon_planning?createDatabaseIfNotExist=true
+spring.datasource.username=${SPRING_DATASOURCE_USERNAME:pokemon_user}
+spring.datasource.password=${SPRING_DATASOURCE_PASSWORD:pokemon_password}
+spring.datasource.driver-class-name=org.mariadb.jdbc.Driver
+
+# Server port
+server.port=${SERVER_PORT:8080}
+
+# JPA/Hibernate
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MariaDBDialect
+spring.jpa.show-sql=false
+
+# Liquibase - Use pokemon_planning schema (not 'dev')
+spring.liquibase.enabled=true
+spring.liquibase.change-log=classpath:db/changelog/db.changelog-master.yml
+spring.liquibase.contexts=docker
+spring.liquibase.default-schema=pokemon_planning
+
+# CORS
+spring.web.cors.allowed-origins=${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8012}
+
+# Logging
+logging.level.root=INFO
+logging.level.com.pcagrade=INFO
+
+# ===============================================
+# SECURITY CONFIGURATION FOR DOCKER DEV
+# ===============================================
+# Disable OAuth2 for isolated Docker development
+# This activates DockerSecurityConfig instead of the main SecurityConfig
+security.oauth2.disabled=true
+
+# Placeholder JWKS (won't be used when OAuth2 is disabled)
+authentik.jwks={"keys":[]}
+
+# ===============================================
+# SYMFONY API CONFIGURATION
+# ===============================================
+# Use host.docker.internal to access Symfony running on host machine
+# Path prefix: /v1/json (as per Symfony routes)
+symfony.api.base-url=${SYMFONY_API_BASE_URL:http://host.docker.internal:8000/v1/json}
+symfony.api.key=${SYMFONY_API_KEY:planning-sync-key-2025}
+symfony.api.timeout=60

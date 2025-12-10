@@ -1,0 +1,78 @@
+services:
+  # Database Service
+  db:
+    image: mariadb:10.6
+    container_name: pokemon-db
+    environment:
+      MARIADB_DATABASE: pokemon_planning
+      MARIADB_USER: pokemon_user
+      MARIADB_PASSWORD: pokemon_password
+      MARIADB_ROOT_PASSWORD: root_password
+    volumes:
+      - db_data:/var/lib/mysql
+    ports:
+      - "8011:3306"
+    networks:
+      - pokemon-network
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Backend Service (Spring Boot)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pokemon-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    # Allow access to host machine (for Symfony API)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # CRITICAL: Override the profile to use docker instead of local
+      SPRING_PROFILES_ACTIVE: docker
+      # Database connection - internal Docker network uses port 3306
+      SPRING_DATASOURCE_URL: jdbc:mariadb://db:3306/pokemon_planning?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: pokemon_user
+      SPRING_DATASOURCE_PASSWORD: pokemon_password
+      # Server configuration
+      SERVER_PORT: 8080
+      # CORS - allow both frontend ports
+      CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:8012
+      # Symfony API URL - use host.docker.internal to access host machine
+      # Path prefix: /v1/json (as per Symfony routes)
+      SYMFONY_API_BASE_URL: http://host.docker.internal:8000/v1/json
+      SYMFONY_API_KEY: planning-sync-key-2025
+    ports:
+      - "8010:8080"
+    networks:
+      - pokemon-network
+    restart: on-failure
+
+  # Frontend Service (Vue.js + Nginx)
+  frontend:
+    build:
+      context: ./src/main/frontend
+      dockerfile: Dockerfile
+      args:
+        # Build-time variables - injected during npm run build
+        VITE_API_BASE_URL: http://localhost:8010
+        VITE_AUTH_DISABLED: "true"
+    container_name: pokemon-frontend
+    ports:
+      - "8012:3000"
+    networks:
+      - pokemon-network
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
+
+networks:
+  pokemon-network:
+    driver: bridge
